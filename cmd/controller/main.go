@@ -33,7 +33,15 @@ func main() {
 		fmt.Println(baseName, version)
 		return
 	}
-
-	handle()
+  handle()
 	os.Exit(0)
+}
+
+func handle() {
+  driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *maxVolumesPerNode, version)
+	if err != nil {
+		fmt.Printf("Failed to initialize driver: %s", err.Error())
+		os.Exit(1)
+	}
+	driver.RunController()
 }
