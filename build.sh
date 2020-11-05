@@ -4,5 +4,4 @@ REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git r
 NOW=$(date +'%Y-%m-%d_%T')
 go mod tidy
 go mod vendor
-go build -ldflags "-X main.sha1ver=$REV -X main.buildTime=$NOW"  -o ./bin/csi-shp-controller ./cmd/controller
-go build -ldflags "-X main.sha1ver=$REV -X main.buildTime=$NOW"  -o ./bin/csi-shp-nodeplugin ./cmd/node
+go build -ldflags "-X main.version=$REV -X main.buildTime=$NOW"  -o ./bin/csi-shp-driver ./cmd/sharedhostpath

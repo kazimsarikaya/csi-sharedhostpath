@@ -19,6 +19,8 @@ var (
 	nodeID            = flag.String("nodeid", "", "node id")
 	maxVolumesPerNode = flag.Int64("maxvolumespernode", 0, "limit of volumes per node")
 	showVersion       = flag.Bool("version", false, "Show version.")
+	controller       	= flag.Bool("controller", false, "Run as controller.")
+	node       				= flag.Bool("node", false, "Run as node.")
 	// Set by the build process
 	version = ""
   buildTime = ""
@@ -30,7 +32,7 @@ func main() {
 
 	if *showVersion {
 		baseName := path.Base(os.Args[0])
-		fmt.Println(baseName, version)
+		fmt.Println(baseName, version, buildTime)
 		return
 	}
   handle()
@@ -43,5 +45,17 @@ func handle() {
 		fmt.Printf("Failed to initialize driver: %s", err.Error())
 		os.Exit(1)
 	}
-	driver.RunController()
+	if *controller && *node {
+		fmt.Printf("only one of controller or node flag should be set.")
+		os.Exit(1)
+	}
+	if *controller {
+		driver.RunController()
+	} else if *node {
+		driver.RunNode()
+	} else {
+		fmt.Printf("One of controller or node flag should be set.")
+		os.Exit(1)
+	}
+
 }
