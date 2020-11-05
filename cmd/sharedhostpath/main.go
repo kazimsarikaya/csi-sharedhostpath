@@ -6,7 +6,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/kazimsarikaya/csi-sharedpostpath/internal/sharedhostpath"
+	"github.com/kazimsarikaya/csi-sharedhostpath/internal/sharedhostpath"
 )
 
 func init() {
