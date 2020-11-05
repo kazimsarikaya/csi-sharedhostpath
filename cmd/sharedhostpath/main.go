@@ -40,22 +40,21 @@ func main() {
 }
 
 func handle() {
+	if !(*controller != *node) {
+		fmt.Printf("only one of controller or node flag should be set.\n")
+		os.Exit(1)
+	}
+
   driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *maxVolumesPerNode, version)
 	if err != nil {
-		fmt.Printf("Failed to initialize driver: %s", err.Error())
+		fmt.Printf("Failed to initialize driver: %s\n", err.Error())
 		os.Exit(1)
 	}
-	if *controller && *node {
-		fmt.Printf("only one of controller or node flag should be set.")
-		os.Exit(1)
-	}
+
 	if *controller {
 		driver.RunController()
 	} else if *node {
 		driver.RunNode()
-	} else {
-		fmt.Printf("One of controller or node flag should be set.")
-		os.Exit(1)
 	}
 
 }
