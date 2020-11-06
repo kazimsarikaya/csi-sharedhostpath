@@ -5,17 +5,6 @@ import (
 	"testing"
 )
 
-func TestDeleteDB(t *testing.T) {
-	vh, err := NewVolumeHelper("./tmp/")
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	_, err = vh.DeleteDB()
-	if err != nil {
-		t.Errorf("create db failed %s", err)
-	}
-}
-
 func TestCreateDB(t *testing.T) {
 	vh, err := NewVolumeHelper("./tmp/")
 	if err != nil {
@@ -94,5 +83,16 @@ func TestReBuildSymLinks(t *testing.T) {
 	err = vh.ReBuildSymLinks()
 	if err != nil {
 		t.Errorf("cannot rebuild symlinks: %v", err)
+	}
+}
+
+func TestDeleteDB(t *testing.T) {
+	vh, err := NewVolumeHelper("./tmp/")
+	if err != nil {
+		t.Errorf("cannot create volume helper: %v", err)
+	}
+	err = vh.DeleteDB()
+	if err != nil {
+		t.Errorf("create db failed %s", err)
 	}
 }

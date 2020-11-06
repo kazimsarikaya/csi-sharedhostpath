@@ -65,8 +65,8 @@ func NewVolumeHelper(basepath string) (*VolumeHelper, error) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		need_create = true
 	}
-
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	dsn := fmt.Sprintf("%s?cache=shared&_journal_mode=wal", dbPath)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		glog.Errorf("can not create db file %s %v", dbPath, err)
 		return nil, err
@@ -90,15 +90,22 @@ func NewVolumeHelper(basepath string) (*VolumeHelper, error) {
 	return vh, nil
 }
 
-func (vh *VolumeHelper) DeleteDB() (bool, error) {
-	err := os.Remove(vh.db_path)
-	if err == nil || os.IsNotExist(err) {
-		glog.Infof("the db removed: %s", vh.db_path)
-		return true, nil
-	} else {
-		glog.Errorf("the db could not be removed: %s %v", vh.db_path, err)
-		return false, err
+func (vh *VolumeHelper) DeleteDB() error {
+	sqlfs := fmt.Sprintf("%s*", vh.db_path)
+	files, err := filepath.Glob(sqlfs)
+	if err != nil {
+		glog.Errorf("cannot fetch db files: %s %v", vh.db_path, err)
+		return err
 	}
+	for _, f := range files {
+		err = os.Remove(f)
+		if err == nil || os.IsNotExist(err) {
+			glog.Infof("the db file removed: %s", f)
+		} else {
+			glog.Errorf("the db could not be removed: %s %v", f, err)
+		}
+	}
+	return err
 }
 
 func (vh *VolumeHelper) CreateDB() (bool, error) {
