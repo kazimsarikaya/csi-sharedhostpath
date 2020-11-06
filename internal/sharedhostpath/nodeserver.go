@@ -16,7 +16,7 @@ type nodeServer struct {
 }
 
 func NewNodeServer(nodeId string, maxVolumesPerNode int64) *nodeServer {
-	vh, _ := NewVolumeHelper(dataRoot)
+	vh, _ := NewVolumeHelper(DataRoot)
 	return &nodeServer{
 		nodeID:            nodeId,
 		maxVolumesPerNode: maxVolumesPerNode,

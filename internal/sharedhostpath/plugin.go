@@ -25,7 +25,7 @@ var (
 )
 
 const (
-	dataRoot = "/csi-data-dir"
+	DataRoot = "/csi-data-dir"
 )
 
 func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerNode int64, version string) (*sharedHostPath, error) {
@@ -44,8 +44,8 @@ func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerN
 		vendorVersion = version
 	}
 
-	if err := os.MkdirAll(dataRoot, 0750); err != nil {
-		return nil, fmt.Errorf("failed to create dataRoot: %v", err)
+	if err := os.MkdirAll(DataRoot, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create DataRoot: %v", err)
 	}
 
 	glog.Infof("Driver: %v ", driverName)

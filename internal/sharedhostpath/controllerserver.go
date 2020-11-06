@@ -22,7 +22,7 @@ const (
 )
 
 func NewControllerServer(nodeID string) *controllerServer {
-	vh, _ := NewVolumeHelper(dataRoot)
+	vh, _ := NewVolumeHelper(DataRoot)
 	return &controllerServer{
 		caps: getControllerServiceCapabilities(
 			[]csi.ControllerServiceCapability_RPC_Type{

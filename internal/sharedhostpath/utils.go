@@ -3,16 +3,16 @@ package sharedhostpath
 import (
 	"fmt"
 	"github.com/golang/glog"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-
+	"errors"
+	utilexec "k8s.io/utils/exec"
 	"runtime"
 	"time"
-
-	utilexec "k8s.io/utils/exec"
 )
 
 const (
@@ -186,10 +186,13 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 	return true, nil
 }
 
-func (vh *VolumeHelper) GetVolume(volid string) (Volume, error) {
+func (vh *VolumeHelper) GetVolume(volid string) (*Volume, error) {
 	var vol Volume
-	vh.db.Where("vol_id = ?", volid).First(&vol)
-	return vol, vh.db.Error
+	result := vh.db.Where("vol_id = ?", volid).First(&vol)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, result.Error
+	}
+	return &vol, result.Error
 }
 
 func (vh *VolumeHelper) DeleteVolume(volid string) error {
@@ -225,8 +228,11 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 
 func (vh *VolumeHelper) GetVolumeIdByName(volname string) (string, error) {
 	var vol Volume
-	vh.db.Where("vol_name = ?", volname).First(&vol)
-	return vol.VolID, vh.db.Error
+	result := vh.db.Where("vol_name = ?", volname).First(&vol)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return "", result.Error
+	}
+	return vol.VolID, result.Error
 }
 
 func (vh *VolumeHelper) ReBuildSymLinks() error {
@@ -264,8 +270,44 @@ func (vh *VolumeHelper) ReBuildSymLinks() error {
 	return err
 }
 
-/*
 func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
+	var vols []Volume
+	vh.db.Unscoped().Where("deleted_at is not null").Find(&vols)
+	err := vh.db.Error
+	if err != nil {
+		glog.Errorf("cannot get deleted volumes from db: %v", err)
+		return err
+	}
 
+	// Phase1 delete vols from disk if deleted from db
+	for _, vol := range vols {
+		volume_path := filepath.Join(vh.vols_path, vol.VolID)
+		if _, err := os.Stat(volume_path); err == nil {
+			err = os.RemoveAll(volume_path)
+			if err != nil {
+				glog.Errorf("cannot deleted volumes from disk: %v", err)
+			}
+		}
+	}
+
+	// Phase2 delete vols from disk if not exists on db
+	fis, err := ioutil.ReadDir(vh.vols_path)
+	if err != nil {
+		glog.Errorf("cannot read volumes (volid) from disk: %v", err)
+		return err
+	}
+	for _, fi := range fis {
+		var vol Volume
+		result := vh.db.Where("vol_id = ?", fi.Name()).First(&vol)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			volume_path := filepath.Join(vh.vols_path, fi.Name())
+			err = os.RemoveAll(volume_path)
+			if err != nil {
+				glog.Errorf("cannot deleted volumes from disk: %v", err)
+			}
+		}
+	}
+
+	// Phase3 rebuild links
+	return vh.ReBuildSymLinks()
 }
-*/

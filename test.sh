@@ -10,6 +10,6 @@ do
 done
 for tf in $(find . -type f -name "*.test");
 do
-  ./$tf
+  ./$tf -test.v
   rm -f ./$tf
 done

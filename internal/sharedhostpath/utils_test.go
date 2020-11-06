@@ -93,6 +93,17 @@ func TestDeleteDB(t *testing.T) {
 	}
 	err = vh.DeleteDB()
 	if err != nil {
-		t.Errorf("create db failed %s", err)
+		t.Errorf("delete db failed %s", err)
+	}
+}
+
+func TestCleanUpDanglingVolumes(t *testing.T) {
+	vh, err := NewVolumeHelper("./tmp/")
+	if err != nil {
+		t.Errorf("cannot create volume helper: %v", err)
+	}
+	err = vh.CleanUpDanglingVolumes()
+	if err != nil {
+		t.Errorf("clean up dangling volumes failed %s", err)
 	}
 }
