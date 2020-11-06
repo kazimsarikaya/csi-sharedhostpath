@@ -297,9 +297,9 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 		return err
 	}
 	for _, fi := range fis {
-		var vol Volume
-		result := vh.db.Where("vol_id = ?", fi.Name()).First(&vol)
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		var vols []Volume
+		result := vh.db.Where("vol_id = ?", fi.Name()).Find(&vols)
+		if result.RowsAffected == 0 {
 			volume_path := filepath.Join(vh.vols_path, fi.Name())
 			err = os.RemoveAll(volume_path)
 			if err != nil {

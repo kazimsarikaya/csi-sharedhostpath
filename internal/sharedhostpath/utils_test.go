@@ -106,4 +106,5 @@ func TestCleanUpDanglingVolumes(t *testing.T) {
 	if err != nil {
 		t.Errorf("clean up dangling volumes failed %s", err)
 	}
+	assert.NoFileExistsf(t, "./tmp/vols/test-id-1", "clean up dangling volumes failed")
 }
