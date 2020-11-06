@@ -10,12 +10,14 @@ import (
 
 type identityServer struct {
 	name    string
+	isController bool
 	version string
 }
 
-func NewIdentityServer(name, version string) *identityServer {
+func NewIdentityServer(name string, isController bool, version string) *identityServer {
 	return &identityServer{
 		name:    name,
+		isController: isController,
 		version: version,
 	}
 }
@@ -43,8 +45,18 @@ func (ids *identityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*c
 
 func (ids *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	glog.V(5).Infof("Using default capabilities")
-	return &csi.GetPluginCapabilitiesResponse{
-		Capabilities: []*csi.PluginCapability{
-		},
-	}, nil
+	if ids.isController {
+		return &csi.GetPluginCapabilitiesResponse{
+			Capabilities: []*csi.PluginCapability{{
+					Type: &csi.PluginCapability_Service_{
+						Service: &csi.PluginCapability_Service{
+							Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+						},
+					},
+				},
+			},
+		}, nil
+	} else {
+		return &csi.GetPluginCapabilitiesResponse{}, nil
+	}
 }

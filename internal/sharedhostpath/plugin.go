@@ -65,7 +65,7 @@ func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerN
 
 func (shp *sharedHostPath) RunController() {
 	// Create GRPC servers
-	shp.ids = NewIdentityServer(shp.name, shp.version)
+	shp.ids = NewIdentityServer(shp.name, true, shp.version)
 	shp.cs = NewControllerServer(shp.nodeID)
 
 	s := NewNonBlockingGRPCServer()
@@ -75,7 +75,7 @@ func (shp *sharedHostPath) RunController() {
 
 func (shp *sharedHostPath) RunNode() {
 	// Create GRPC servers
-	shp.ids = NewIdentityServer(shp.name, shp.version)
+	shp.ids = NewIdentityServer(shp.name, false, shp.version)
 	shp.ns = NewNodeServer(shp.nodeID, shp.maxVolumesPerNode)
 
 	s := NewNonBlockingGRPCServer()
