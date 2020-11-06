@@ -9,16 +9,16 @@ import (
 )
 
 type identityServer struct {
-	name    string
+	name         string
 	isController bool
-	version string
+	version      string
 }
 
 func NewIdentityServer(name string, isController bool, version string) *identityServer {
 	return &identityServer{
-		name:    name,
+		name:         name,
 		isController: isController,
-		version: version,
+		version:      version,
 	}
 }
 
@@ -48,12 +48,12 @@ func (ids *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.G
 	if ids.isController {
 		return &csi.GetPluginCapabilitiesResponse{
 			Capabilities: []*csi.PluginCapability{{
-					Type: &csi.PluginCapability_Service_{
-						Service: &csi.PluginCapability_Service{
-							Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-						},
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
 					},
 				},
+			},
 			},
 		}, nil
 	} else {

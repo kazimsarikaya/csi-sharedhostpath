@@ -1,27 +1,35 @@
 package sharedhostpath
 
 import (
-  "golang.org/x/net/context"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-  "github.com/container-storage-interface/spec/lib/go/csi"
-  "github.com/golang/glog"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/glog"
 )
 
 type controllerServer struct {
 	caps   []*csi.ControllerServiceCapability
 	nodeID string
+	vh     *VolumeHelper
 }
 
-func NewControllerServer( nodeID string) *controllerServer {
+const (
+	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	pvNameKey       = "csi.storage.k8s.io/pv/name"
+)
+
+func NewControllerServer(nodeID string) *controllerServer {
+	vh, _ := NewVolumeHelper(dataRoot)
 	return &controllerServer{
 		caps: getControllerServiceCapabilities(
 			[]csi.ControllerServiceCapability_RPC_Type{
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-				csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 			}),
 		nodeID: nodeID,
+		vh:     vh,
 	}
 }
 
@@ -47,6 +55,45 @@ func getControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_T
 
 	return csc
 }
+
+func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID cannot be empty")
+	}
+	if len(req.VolumeCapabilities) == 0 {
+		return nil, status.Error(codes.InvalidArgument, req.VolumeId)
+	}
+
+	// TODO: check for volume exits?
+	// if _, err := getVolumeByID(req.GetVolumeId()); err != nil {
+	//   return nil, status.Error(codes.NotFound, req.GetVolumeId())
+	// }
+
+	for _, cap := range req.GetVolumeCapabilities() {
+		if cap.GetMount() == nil && cap.GetBlock() == nil {
+			return nil, status.Error(codes.InvalidArgument, "cannot have both mount and block access type be undefined")
+		}
+	}
+
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeContext:      req.GetVolumeContext(),
+			VolumeCapabilities: req.GetVolumeCapabilities(),
+			Parameters:         req.GetParameters(),
+		},
+	}, nil
+}
+
+func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+/* Unimplemented methods beyond */
 
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
@@ -76,22 +123,10 @@ func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
 func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
 func (cs *controllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }

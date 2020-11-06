@@ -19,13 +19,12 @@ var (
 	nodeID            = flag.String("nodeid", "", "node id")
 	maxVolumesPerNode = flag.Int64("maxvolumespernode", 0, "limit of volumes per node")
 	showVersion       = flag.Bool("version", false, "Show version.")
-	controller       	= flag.Bool("controller", false, "Run as controller.")
-	node       				= flag.Bool("node", false, "Run as node.")
+	controller        = flag.Bool("controller", false, "Run as controller.")
+	node              = flag.Bool("node", false, "Run as node.")
 	// Set by the build process
-	version = ""
-  buildTime = ""
+	version   = ""
+	buildTime = ""
 )
-
 
 func main() {
 	flag.Parse()
@@ -35,7 +34,7 @@ func main() {
 		fmt.Println(baseName, version, buildTime)
 		return
 	}
-  handle()
+	handle()
 	os.Exit(0)
 }
 
@@ -45,7 +44,7 @@ func handle() {
 		os.Exit(1)
 	}
 
-  driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *maxVolumesPerNode, version)
+	driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *maxVolumesPerNode, version)
 	if err != nil {
 		fmt.Printf("Failed to initialize driver: %s\n", err.Error())
 		os.Exit(1)

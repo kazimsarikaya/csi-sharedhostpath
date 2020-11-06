@@ -2,12 +2,11 @@ package sharedhostpath
 
 import (
 	"errors"
-  "fmt"
+	"fmt"
 	"os"
 
 	"github.com/golang/glog"
 )
-
 
 type sharedHostPath struct {
 	name              string
@@ -16,7 +15,7 @@ type sharedHostPath struct {
 	endpoint          string
 	maxVolumesPerNode int64
 
-  ids *identityServer
+	ids *identityServer
 	ns  *nodeServer
 	cs  *controllerServer
 }
@@ -28,7 +27,6 @@ var (
 const (
 	dataRoot = "/csi-data-dir"
 )
-
 
 func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerNode int64, version string) (*sharedHostPath, error) {
 	if driverName == "" {
@@ -61,7 +59,6 @@ func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerN
 		maxVolumesPerNode: maxVolumesPerNode,
 	}, nil
 }
-
 
 func (shp *sharedHostPath) RunController() {
 	// Create GRPC servers
