@@ -1,12 +1,12 @@
 package sharedhostpath
 
 import (
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/glog"
+	"github.com/google/uuid"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 )
 
 type controllerServer struct {
@@ -19,6 +19,11 @@ const (
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
+)
+
+const (
+	deviceID           = "deviceID"
+	maxStorageCapacity = 1 << 40
 )
 
 func NewControllerServer(nodeID string) *controllerServer {
@@ -43,7 +48,7 @@ func getControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_T
 	var csc []*csi.ControllerServiceCapability
 
 	for _, cap := range cl {
-		glog.Infof("Enabling controller service capability: %v", cap.String())
+		glog.V(5).Infof("Enabling controller service capability: %v", cap.String())
 		csc = append(csc, &csi.ControllerServiceCapability{
 			Type: &csi.ControllerServiceCapability_Rpc{
 				Rpc: &csi.ControllerServiceCapability_RPC{
@@ -65,10 +70,9 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, req.VolumeId)
 	}
 
-	// TODO: check for volume exits?
-	// if _, err := getVolumeByID(req.GetVolumeId()); err != nil {
-	//   return nil, status.Error(codes.NotFound, req.GetVolumeId())
-	// }
+	if _, err := cs.vh.GetVolume(req.GetVolumeId()); err != nil {
+		return nil, status.Error(codes.NotFound, req.GetVolumeId())
+	}
 
 	for _, cap := range req.GetVolumeCapabilities() {
 		if cap.GetMount() == nil && cap.GetBlock() == nil {
@@ -86,11 +90,98 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 }
 
 func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+
+	if len(req.GetName()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
+	}
+	caps := req.GetVolumeCapabilities()
+	if caps == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
+	}
+
+	var accessTypeMount, accessTypeBlock bool
+
+	for _, cap := range caps {
+		if cap.GetBlock() != nil {
+			accessTypeBlock = true
+		}
+		if cap.GetMount() != nil {
+			accessTypeMount = true
+		}
+	}
+
+	if accessTypeBlock && accessTypeMount {
+		return nil, status.Error(codes.InvalidArgument, "cannot have both block and mount access type")
+	}
+	capacity := uint64(req.GetCapacityRange().GetRequiredBytes())
+	if capacity >= maxStorageCapacity {
+		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
+	}
+
+	volName := req.GetName()
+
+	if _, err := cs.vh.GetVolumeIdByName(volName); err == nil {
+		return nil, status.Error(codes.AlreadyExists, "Volume already exists")
+	}
+
+	params := req.GetParameters()
+
+	nsName, found := params[pvcNamespaceKey]
+	if !found {
+		return nil, status.Error(codes.InvalidArgument, "Namespace name parameter missing in request")
+	}
+
+	pvName, found := params[pvNameKey]
+	if !found {
+		return nil, status.Error(codes.InvalidArgument, "PV name parameter missing in request")
+	}
+
+	pvcName, found := params[pvcNameKey]
+	if !found {
+		return nil, status.Error(codes.InvalidArgument, "PVC name parameter missing in request")
+	}
+
+	r_uuid, err := uuid.NewRandom()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "cannot generate volume id")
+	}
+
+	volumeID := r_uuid.String()
+
+	vol, err := cs.vh.CreateVolume(volumeID, volName, pvName, pvcName, nsName, capacity, accessTypeBlock)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create volume %v: %v", volumeID, err)
+	}
+	glog.V(5).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
+
+	topologies := []*csi.Topology{&csi.Topology{
+		Segments: map[string]string{},
+	}}
+
+	return &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			VolumeId:           volumeID,
+			CapacityBytes:      req.GetCapacityRange().GetRequiredBytes(),
+			VolumeContext:      req.GetParameters(),
+			ContentSource:      req.GetVolumeContentSource(),
+			AccessibleTopology: topologies,
+		},
+	}, nil
 }
 
 func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+
+	volId := req.GetVolumeId()
+	if err := cs.vh.DeleteVolume(volId); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete volume %v: %v", volId, err)
+	}
+
+	glog.V(5).Infof("volume %v successfully deleted", volId)
+
+	return &csi.DeleteVolumeResponse{}, nil
 }
 
 /* Unimplemented methods beyond */

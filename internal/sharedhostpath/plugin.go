@@ -48,8 +48,8 @@ func NewSharedHostPathDriver(driverName, nodeID, endpoint string, maxVolumesPerN
 		return nil, fmt.Errorf("failed to create DataRoot: %v", err)
 	}
 
-	glog.Infof("Driver: %v ", driverName)
-	glog.Infof("Version: %s", vendorVersion)
+	glog.V(5).Infof("Driver: %v ", driverName)
+	glog.V(5).Infof("Version: %s", vendorVersion)
 
 	return &sharedHostPath{
 		name:              driverName,

@@ -1,0 +1,273 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-hostpatcontroller
+  namespace: storage
+  labels:
+    app: csi-hostpatcontroller
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: csi-hostpatcontroller
+  template:
+    metadata:
+      labels:
+        app: csi-hostpatcontroller
+    spec:
+      serviceAccountName: csi-sharedhostpathplugin
+      containers:
+      - name: csi-provisioner
+        image: k8s.gcr.io/sig-storage/csi-provisioner:v2.0.2
+        args:
+          - -v=5
+          - --csi-address=/csi/csi.sock
+          - --feature-gates=Topology=true
+          - --leader-election
+          - --leader-election-namespace=storage
+          - --extra-create-metadata
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+
+      - name: csi-attacher
+        image: k8s.gcr.io/sig-storage/csi-attacher:v3.0.0
+        args:
+          - --v=5
+          - --csi-address=/csi/csi.sock
+          - --leader-election
+          - --leader-election-namespace=storage
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /csi
+          name: socket-dir
+
+      - name: liveness-probe
+        volumeMounts:
+        - mountPath: /csi
+          name: socket-dir
+        image: k8s.gcr.io/sig-storage/livenessprobe:v2.1.0
+        args:
+        - --csi-address=/csi/csi.sock
+        - --health-port=9898
+
+      - name: sharedhostpath
+        image: kazimsarikaya/csi-sharedhostpath:latest
+        imagePullPolicy: Always
+        args:
+          - "--drivername=sharedhostpath.csi.k8s.io"
+          - "--v=9"
+          - "--endpoint=$(CSI_ENDPOINT)"
+          - "--nodeid=${KUBE_NODE_NAME}"
+          - --controller
+        env:
+          - name: CSI_ENDPOINT
+            value: unix:///csi/csi.sock
+          - name: KUBE_NODE_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 9898
+          name: healthz
+          protocol: TCP
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
+          periodSeconds: 2
+        volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          - mountPath: /var/lib/kubelet/pods
+            mountPropagation: Bidirectional
+            name: mountpoint-dir
+          - mountPath: /var/lib/kubelet/plugins
+            mountPropagation: Bidirectional
+            name: plugins-dir
+          - mountPath: /csi-data-dir
+            name: csi-data-dir
+          - mountPath: /dev
+            name: dev-dir
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-hostpath
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+          name: mountpoint-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+          name: registration-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+          name: plugins-dir
+        - hostPath:
+            path: /data/kube-pvs
+            type: DirectoryOrCreate
+          name: csi-data-dir
+        - hostPath:
+            path: /dev
+            type: Directory
+          name: dev-dir
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-sharedhostpathplugin
+  namespace: storage
+spec:
+  selector:
+    matchLabels:
+      app: csi-sharedhostpathplugin
+  template:
+    metadata:
+      labels:
+        app: csi-sharedhostpathplugin
+    spec:
+      serviceAccountName: csi-sharedhostpathplugin
+      containers:
+        - name: node-driver-registrar
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1
+          args:
+            - --v=5
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-hostpath/csi.sock
+          securityContext:
+            privileged: true
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          - mountPath: /registration
+            name: registration-dir
+          - mountPath: /csi-data-dir
+            name: csi-data-dir
+
+        - name: sharedhostpath
+          image: kazimsarikaya/csi-sharedhostpath:latest
+          imagePullPolicy: Always
+          args:
+            - "--drivername=sharedhostpath.csi.k8s.io"
+            - "--v=9"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=${KUBE_NODE_NAME}"
+            - --node
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+          ports:
+          - containerPort: 9898
+            name: healthz
+            protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 2
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+            - mountPath: /var/lib/kubelet/plugins
+              mountPropagation: Bidirectional
+              name: plugins-dir
+            - mountPath: /csi-data-dir
+              name: csi-data-dir
+            - mountPath: /dev
+              name: dev-dir
+
+        - name: liveness-probe
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          image: k8s.gcr.io/sig-storage/livenessprobe:v2.1.0
+          args:
+          - --csi-address=/csi/csi.sock
+          - --health-port=9898
+
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi-hostpath
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+          name: mountpoint-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+          name: registration-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+          name: plugins-dir
+        - hostPath:
+            path: /data/kube-pvs
+            type: DirectoryOrCreate
+          name: csi-data-dir
+        - hostPath:
+            path: /dev
+            type: Directory
+          name: dev-dir
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cleanupdanglingvolumes
+  namespace: storage
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanupdanglingvolumes
+            image: kazimsarikaya/csi-sharedhostpath:latest
+            imagePullPolicy: Always
+            args:
+            - --job-cleanupdangling
+            - "--v=9"
+            volumeMounts:
+            - mountPath: /csi-data-dir
+              name: csi-data-dir
+          restartPolicy: OnFailure
+          volumes:
+          - hostPath:
+              path: /data/kube-pvs
+              type: DirectoryOrCreate
+            name: csi-data-dir

@@ -1,6 +1,6 @@
 #!/bin/sh
 rm -fr tmp/*
-find . -maxdepth 1 -name "*.test" -delete 
+find . -maxdepth 1 -name "*.test" -delete
 REV=$(shell git describe --long --tags --match='v*' --dirty 2>/dev/null || git rev-list -n1 HEAD)
 NOW=$(date +'%Y-%m-%d_%T')
 go mod tidy
@@ -11,5 +11,5 @@ do
 done
 for tf in $(find . -type f -name "*.test");
 do
-  ./$tf -test.v
+  ./$tf -test.v -v 9 || exit 1
 done

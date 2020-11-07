@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
+	github.com/google/uuid v1.1.2
 	github.com/kubernetes-csi/csi-lib-utils v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.4 // indirect
 	github.com/stretchr/testify v1.5.1
