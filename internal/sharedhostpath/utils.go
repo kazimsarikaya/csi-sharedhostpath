@@ -1,16 +1,16 @@
 package sharedhostpath
 
 import (
+	"crypto/md5"
+	"errors"
 	"fmt"
 	"github.com/golang/glog"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"io/ioutil"
+	"io"
+	utilexec "k8s.io/utils/exec"
 	"os"
 	"path/filepath"
-
-	"errors"
-	utilexec "k8s.io/utils/exec"
 	"runtime"
 	"time"
 )
@@ -40,19 +40,20 @@ type Volume struct {
 	NSName    string         `gorm:"index; not null"`
 	Capacity  uint64
 	IsBlock   bool
+	Path      string `gorm:"uniqueIndex; not null"`
 }
 
 func NewVolumeHelper(basepath string) (*VolumeHelper, error) {
 	basepath, _ = filepath.Abs(basepath)
 	vols_path := filepath.Join(basepath, volume_base)
-	err := os.MkdirAll(vols_path, 0755)
+	err := os.MkdirAll(vols_path, 0750)
 	if err != nil {
 		glog.Errorf("cannot create vols path: %s %v", vols_path, err)
 		return nil, err
 	}
 
 	syms_path := filepath.Join(basepath, symlink_base)
-	err = os.MkdirAll(syms_path, 0755)
+	err = os.MkdirAll(syms_path, 0750)
 	if err != nil {
 		glog.Errorf("cannot create vols path: %s %v", syms_path, err)
 		return nil, err
@@ -65,7 +66,7 @@ func NewVolumeHelper(basepath string) (*VolumeHelper, error) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		need_create = true
 	}
-	dsn := fmt.Sprintf("%s?cache=shared&_journal_mode=wal", dbPath)
+	dsn := fmt.Sprintf("%s?cache=shared&_journal_mode=wal&_busy_timeout=1000", dbPath)
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		glog.Errorf("can not create db file %s %v", dbPath, err)
@@ -86,7 +87,7 @@ func NewVolumeHelper(basepath string) (*VolumeHelper, error) {
 			return nil, err
 		}
 	}
-
+	glog.Infof("volume helper is created")
 	return vh, nil
 }
 
@@ -116,6 +117,7 @@ func (vh *VolumeHelper) CreateDB() (bool, error) {
 		glog.Errorf("cannot create db schema on db %s %v", vh.db_path, err)
 		return false, err
 	}
+	glog.Info("database schema created")
 	return true, nil
 }
 
@@ -123,26 +125,34 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 	capacity uint64, isblock bool) (bool, error) {
 	var err error = nil
 
+	h := md5.New()
+	io.WriteString(h, volid)
+	hash := h.Sum(nil)
+	prefix := fmt.Sprintf("%s/%02x/%02x/%02x", vh.vols_path, hash[0], hash[1], hash[2])
+	prefix = filepath.FromSlash(prefix)
+
+	err = os.MkdirAll(prefix, 0750)
+	if err != nil {
+		glog.Errorf("cannot create vols prefix: %s %v", prefix, err)
+		return false, err
+	}
+
+	volume_path := filepath.Join(prefix, volid)
+
 	tx := vh.db.Begin()
 
-	defer func() {
-		if err != nil {
-			glog.Errorf("there is an error: %v, tran will be rollbacked", err)
-			tx.Rollback()
-		}
-	}()
+	vol := Volume{VolID: volid, VolName: volname, PVName: pvname,
+		PVCName: pvcname, NSName: nsname,
+		Capacity: capacity, IsBlock: isblock,
+		Path: volume_path}
 
-	storage := Volume{VolID: volid, VolName: volname, PVName: pvname,
-		PVCName: pvcname, NSName: nsname, Capacity: capacity, IsBlock: isblock}
-
-	result := tx.Create(&storage)
+	result := tx.Create(&vol)
 
 	if result.Error != nil {
+		tx.Rollback()
 		glog.Errorf("cannot insert volume data into db: %v", result.Error)
 		return false, result.Error
 	}
-
-	volume_path := filepath.Join(vh.vols_path, volid)
 
 	if isblock {
 		executor := utilexec.New()
@@ -155,12 +165,14 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 		}
 
 		if err != nil {
+			tx.Rollback()
 			glog.Errorf("cannot create volume file: %s %v", volume_path, err)
 			return false, err
 		}
 	} else {
-		err := os.MkdirAll(volume_path, 0755)
+		err := os.MkdirAll(volume_path, 0750)
 		if err != nil {
+			tx.Rollback()
 			glog.Errorf("cannot create volume dir: %s %v", volume_path, err)
 			return false, err
 		}
@@ -175,13 +187,15 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 		}
 	}
 
-	tx.Commit()
-	err = vh.db.Error
+	err = tx.Commit().Error
 	if err != nil {
+		tx.Rollback()
 		glog.Errorf("cannot create volume dir: %s %v", volume_path, err)
 		os.RemoveAll(volume_path)
 		os.RemoveAll(symlink_file)
 		return false, err
+	} else {
+		glog.Infof("volume %s created for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	}
 	return true, nil
 }
@@ -202,17 +216,12 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 		return err
 	}
 
+	volume_path := vol.Path
+
 	tx := vh.db.Begin()
-	defer func() {
-		if err != nil {
-			glog.Errorf("there is an error while deleting volume: %v, tran will be rollbacked", err)
-			tx.Rollback()
-		}
-	}()
 
 	vh.db.Where("vol_id = ?", vol.VolID).Delete(&Volume{})
 
-	volume_path := filepath.Join(vh.vols_path, volid)
 	symlink_dir := filepath.Join(vh.syms_path, vol.NSName)
 	symlink_file := filepath.Join(symlink_dir, vol.PVCName)
 
@@ -220,9 +229,16 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 	err = os.RemoveAll(volume_path)
 
 	if err != nil {
-		tx.Commit()
-		err = vh.db.Error
+		glog.Errorf("there is an error while deleting volume: %v, tran will be rollbacked", err)
+		tx.Rollback()
+		glog.Errorf("volume %s cannot be deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+	} else {
+		err = tx.Commit().Error
 	}
+	if err == nil {
+		glog.Infof("volume %s deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+	}
+
 	return err
 }
 
@@ -257,7 +273,7 @@ func (vh *VolumeHelper) ReBuildSymLinks() error {
 	}
 
 	for _, vol := range vols {
-		volume_path := filepath.Join(vh.vols_path, vol.VolID)
+		volume_path := vol.Path
 		symlink_dir := filepath.Join(vh.syms_path, vol.NSName)
 		symlink_file := filepath.Join(symlink_dir, vol.PVCName)
 
@@ -266,7 +282,9 @@ func (vh *VolumeHelper) ReBuildSymLinks() error {
 			err = os.Symlink(volume_path, symlink_file)
 		}
 	}
-
+	if err == nil {
+		glog.Infof("all symlinks rebuilded")
+	}
 	return err
 }
 
@@ -291,23 +309,26 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 	}
 
 	// Phase2 delete vols from disk if not exists on db
-	fis, err := ioutil.ReadDir(vh.vols_path)
+	pattern := fmt.Sprintf("%s/*/*/*/*", vh.vols_path)
+	fs, err := filepath.Glob(pattern)
 	if err != nil {
 		glog.Errorf("cannot read volumes (volid) from disk: %v", err)
 		return err
 	}
-	for _, fi := range fis {
+	for _, f := range fs {
 		var vols []Volume
-		result := vh.db.Where("vol_id = ?", fi.Name()).Find(&vols)
+		result := vh.db.Where("path = ?", f).Find(&vols)
 		if result.RowsAffected == 0 {
-			volume_path := filepath.Join(vh.vols_path, fi.Name())
-			err = os.RemoveAll(volume_path)
+			err = os.RemoveAll(f)
 			if err != nil {
 				glog.Errorf("cannot deleted volumes from disk: %v", err)
 			}
 		}
 	}
 
+	if err == nil {
+		glog.Infof("all dangling volumes are deleted")
+	}
 	// Phase3 rebuild links
 	return vh.ReBuildSymLinks()
 }

@@ -1,9 +1,14 @@
 package sharedhostpath
 
 import (
+	"flag"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
+
+func init() {
+	flag.Set("logtostderr", "true")
+}
 
 func TestCreateDB(t *testing.T) {
 	vh, err := NewVolumeHelper("./tmp/")
@@ -25,6 +30,7 @@ func TestCreateStorageFS(t *testing.T) {
 	if err != nil {
 		t.Errorf("create volume failed %s", err)
 	}
+	assert.DirExistsf(t, "./tmp/vols/23/db/3d/test-id-1", "no volume: failed")
 }
 
 func TestCreateStorageBlock(t *testing.T) {
@@ -36,6 +42,7 @@ func TestCreateStorageBlock(t *testing.T) {
 	if err != nil {
 		t.Errorf("create volume failed %s", err)
 	}
+	assert.FileExistsf(t, "./tmp/vols/ad/02/34/test2", "no volume: failed")
 }
 
 func TestGetVolume(t *testing.T) {
@@ -47,7 +54,9 @@ func TestGetVolume(t *testing.T) {
 	if err != nil {
 		t.Errorf("get volume failed %s", err)
 	}
-	assert.EqualValuesf(t, "test2", vol.VolID, "returned volume is different")
+	if vol != nil {
+		assert.EqualValuesf(t, "test2", vol.VolID, "returned volume is different")
+	}
 }
 
 func TestDeleteVolume(t *testing.T) {
@@ -59,7 +68,7 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Errorf("delete volume failed %s", err)
 	}
-	assert.NoFileExistsf(t, "./tmp/vols/test2", "volume delete if failed")
+	assert.NoFileExistsf(t, "./tmp/vols/ad/02/34/test2", "volume delete if failed")
 	assert.NoFileExistsf(t, "./tmp/syms/test2/test2", "symlink delete if failed")
 }
 
@@ -106,5 +115,5 @@ func TestCleanUpDanglingVolumes(t *testing.T) {
 	if err != nil {
 		t.Errorf("clean up dangling volumes failed %s", err)
 	}
-	assert.NoFileExistsf(t, "./tmp/vols/test-id-1", "clean up dangling volumes failed")
+	assert.NoFileExistsf(t, "./tmp/vols/23/db/3d/test-id-1", "clean up dangling volumes failed")
 }
