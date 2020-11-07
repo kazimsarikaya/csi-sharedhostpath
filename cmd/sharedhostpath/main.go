@@ -3,10 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/kazimsarikaya/csi-sharedhostpath/internal/sharedhostpath"
 	"os"
 	"path"
-
-	"github.com/kazimsarikaya/csi-sharedhostpath/internal/sharedhostpath"
 )
 
 func init() {

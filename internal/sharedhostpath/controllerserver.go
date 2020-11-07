@@ -24,6 +24,8 @@ const (
 const (
 	deviceID           = "deviceID"
 	maxStorageCapacity = 1 << 40
+	fstypeParameter    = "sharedhostpath.csi.k8s.io/fsType"
+	typeParameter      = "sharedhostpath.csi.k8s.io/type"
 )
 
 func NewControllerServer(nodeID string) *controllerServer {
@@ -99,20 +101,36 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
 
-	var accessTypeMount, accessTypeBlock bool
+	var accessTypeMount, accessTypeBlock, isBlock bool
 
 	for _, cap := range caps {
 		if cap.GetBlock() != nil {
 			accessTypeBlock = true
+			isBlock = true
 		}
 		if cap.GetMount() != nil {
 			accessTypeMount = true
+			isBlock = false
 		}
 	}
 
 	if accessTypeBlock && accessTypeMount {
 		return nil, status.Error(codes.InvalidArgument, "cannot have both block and mount access type")
 	}
+
+	parameters := req.GetParameters()
+	var vtype string
+	var found bool
+	if vtype, found = parameters[typeParameter]; !found {
+		return nil, status.Error(codes.InvalidArgument, "storage class parameter required: %s")
+	}
+	if vtype == "disk" {
+		isBlock = true
+	}
+	if vtype == "folder" && accessTypeBlock {
+		return nil, status.Error(codes.InvalidArgument, "cannot have both folder type and block access type")
+	}
+
 	capacity := uint64(req.GetCapacityRange().GetRequiredBytes())
 	if capacity >= maxStorageCapacity {
 		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
@@ -148,7 +166,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	volumeID := r_uuid.String()
 
-	vol, err := cs.vh.CreateVolume(volumeID, volName, pvName, pvcName, nsName, capacity, accessTypeBlock)
+	vol, err := cs.vh.CreateVolume(volumeID, volName, pvName, pvcName, nsName, capacity, isBlock)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume %v: %v", volumeID, err)
 	}

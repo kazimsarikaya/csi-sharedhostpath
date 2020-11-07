@@ -5,3 +5,9 @@ test:
 
 build:
 	./build.sh
+
+docker:
+	./docker.sh
+
+docker-push:
+	./docker.sh push
