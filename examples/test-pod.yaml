@@ -1,24 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
+  name: alpine-folder
   labels:
-    app: nginx
+    app: alpine-folder
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx
+      app: alpine-folder
   template:
     metadata:
       labels:
-        app: nginx
+        app: alpine-folder
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.14.2
-        ports:
-        - containerPort: 80
+      - name: alpine-folder
+        image: alpine
         volumeMounts:
         - mountPath: "/data"
           name: my-csi-volume
@@ -26,4 +24,32 @@ spec:
       volumes:
         - name: my-csi-volume
           persistentVolumeClaim:
-            claimName: csi-pvc # defined in csi-pvc.yaml
+            claimName: csi-pvc-folder
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine-disk
+  labels:
+    app: alpine-disk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alpine-disk
+  template:
+    metadata:
+      labels:
+        app: alpine-disk
+    spec:
+      containers:
+      - name: alpine-disk
+        image: alpine
+        volumeMounts:
+        - mountPath: "/data"
+          name: my-csi-volume
+        command: [ "sleep", "1000000" ]
+      volumes:
+        - name: my-csi-volume
+          persistentVolumeClaim:
+            claimName: csi-pvc-disk
