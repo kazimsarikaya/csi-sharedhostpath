@@ -353,9 +353,11 @@ func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 				return false, errors.New(fmt.Sprintf("cannot create volume dir: %s %v", vol.VolPath, err.Error()))
 			}
 		}
+		glog.V(5).Infof("volume needs populating: %s with path: %s", vol.VolID, vol.VolPath)
 		return true, nil
 	} else {
 		if err == nil {
+			glog.V(5).Infof("volume donot need populating: %s with path: %s", vol.VolID, vol.VolPath)
 			return false, nil
 		}
 		return false, errors.New(fmt.Sprintf("cannot stat volume data: %v", err.Error()))
