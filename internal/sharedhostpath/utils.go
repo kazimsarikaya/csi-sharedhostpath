@@ -355,6 +355,9 @@ func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 		}
 		return true, nil
 	} else {
+		if err == nil {
+			return false, nil
+		}
 		return false, errors.New(fmt.Sprintf("cannot stat volume data: %v", err.Error()))
 	}
 	return false, nil
