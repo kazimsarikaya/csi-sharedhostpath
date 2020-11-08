@@ -1,6 +1,7 @@
 package sharedhostpath
 
 import (
+	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"github.com/google/uuid"
@@ -138,8 +139,33 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	volName := req.GetName()
 
-	if _, err := cs.vh.GetVolumeIdByName(volName); err == nil {
-		return nil, status.Error(codes.AlreadyExists, "Volume already exists")
+	topologies := []*csi.Topology{&csi.Topology{
+		Segments: map[string]string{},
+	}}
+
+	if volid, err := cs.vh.GetVolumeIdByName(volName); err == nil {
+		vol, err := cs.vh.GetVolume(volid)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("cannot get volume status: %v", err.Error()))
+		}
+		preq, err := vol.PopulateVolumeIfRequired()
+		if err == nil {
+			if preq {
+				return &csi.CreateVolumeResponse{
+					Volume: &csi.Volume{
+						VolumeId:           vol.VolID,
+						CapacityBytes:      req.GetCapacityRange().GetRequiredBytes(),
+						VolumeContext:      req.GetParameters(),
+						ContentSource:      req.GetVolumeContentSource(),
+						AccessibleTopology: topologies,
+					},
+				}, nil
+			} else {
+				return nil, status.Error(codes.AlreadyExists, "Volume already exists")
+			}
+		} else {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("cannot check volume status: %v", err.Error()))
+		}
 	}
 
 	params := req.GetParameters()
@@ -172,13 +198,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	glog.V(5).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
 
-	topologies := []*csi.Topology{&csi.Topology{
-		Segments: map[string]string{},
-	}}
-
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:           volumeID,
+			VolumeId:           vol.VolID,
 			CapacityBytes:      req.GetCapacityRange().GetRequiredBytes(),
 			VolumeContext:      req.GetParameters(),
 			ContentSource:      req.GetVolumeContentSource(),

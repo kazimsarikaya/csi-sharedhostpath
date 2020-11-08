@@ -139,6 +139,16 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 	volume_path := filepath.Join(prefix, volid)
 
 	tx := vh.db.Begin()
+	if tx == nil || vh.db.Error != nil {
+		glog.Errorf("cannot start transaction: %v", err)
+		return nil, vh.db.Error
+	}
+	defer func() {
+		if err := recover(); err != nil {
+			tx.Rollback()
+			glog.Errorf("an error accured while trans, rollback performed %v", err)
+		}
+	}()
 
 	vol := Volume{VolID: volid, VolName: volname, PVName: pvname,
 		PVCName: pvcname, NSName: nsname,
@@ -153,33 +163,18 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 		return nil, result.Error
 	}
 
-	if isblock {
-		executor := utilexec.New()
-		cap_str := fmt.Sprintf("seek=%d", capacity)
-		vp_str := fmt.Sprintf("of=%s", volume_path)
-		var output []byte
-		output, err = executor.Command("dd", "if=/dev/null", "bs=1", "count=0", cap_str, vp_str).CombinedOutput()
-
-		if err != nil {
-			tx.Rollback()
-			glog.Errorf("cannot create volume file: %s %v %s", volume_path, err, string(output))
-			return nil, err
-		}
-	} else {
-		err := os.MkdirAll(volume_path, 0750)
-		if err != nil {
-			tx.Rollback()
-			glog.Errorf("cannot create volume dir: %s %v", volume_path, err)
-			return nil, err
-		}
+	_, err = vol.PopulateVolumeIfRequired()
+	if err != nil {
+		tx.Rollback()
+		return nil, errors.New(fmt.Sprintf("cannot populate volume: %v", err.Error()))
 	}
 
-	symlink_dir := filepath.Join(vh.syms_path, nsname)
-	symlink_file := filepath.Join(symlink_dir, pvcname)
+	symlink_dir := filepath.Join(vh.syms_path, vol.NSName)
+	symlink_file := filepath.Join(symlink_dir, vol.PVCName)
 	err = os.MkdirAll(symlink_dir, 0750)
 	if err == nil {
 		if err == nil {
-			os.Symlink(volume_path, symlink_file)
+			os.Symlink(vol.VolPath, symlink_file)
 		}
 	}
 
@@ -215,6 +210,16 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 	volume_path := vol.VolPath
 
 	tx := vh.db.Begin()
+	if tx == nil || vh.db.Error != nil {
+		glog.Errorf("cannot start transaction: %v", err)
+		return vh.db.Error
+	}
+	defer func() {
+		if err := recover(); err != nil {
+			tx.Rollback()
+			glog.Errorf("an error accured while trans, rollback performed %v", err)
+		}
+	}()
 
 	vh.db.Where("vol_id = ?", vol.VolID).Delete(&Volume{})
 
@@ -327,4 +332,30 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 	}
 	// Phase3 rebuild links
 	return vh.ReBuildSymLinks()
+}
+
+func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
+	var err error
+	_, err = os.Lstat(vol.VolPath)
+	if os.IsNotExist(err) {
+		if vol.IsBlock {
+			executor := utilexec.New()
+			cap_str := fmt.Sprintf("seek=%d", vol.Capacity)
+			vp_str := fmt.Sprintf("of=%s", vol.VolPath)
+			var output []byte
+			output, err = executor.Command("dd", "if=/dev/null", "bs=1", "count=0", cap_str, vp_str).CombinedOutput()
+			if err != nil {
+				return false, errors.New(fmt.Sprintf("cannot create volume file: %s %v %s", vol.VolPath, err.Error(), string(output)))
+			}
+		} else {
+			err := os.MkdirAll(vol.VolPath, 0750)
+			if err != nil {
+				return false, errors.New(fmt.Sprintf("cannot create volume dir: %s %v", vol.VolPath, err.Error()))
+			}
+		}
+		return true, nil
+	} else {
+		return false, errors.New(fmt.Sprintf("cannot stat volume data: %v", err.Error()))
+	}
+	return false, nil
 }
