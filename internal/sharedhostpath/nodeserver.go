@@ -3,11 +3,11 @@ package sharedhostpath
 import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"github.com/kazimsarikaya/csi-sharedhostpath/internal/volumepathhandler"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	klog "k8s.io/klog/v2"
 	utilexec "k8s.io/utils/exec"
 	"k8s.io/utils/mount"
 	"os"
@@ -20,8 +20,7 @@ type nodeServer struct {
 	vh                *VolumeHelper
 }
 
-func NewNodeServer(nodeId string, maxVolumesPerNode int64) *nodeServer {
-	vh, _ := NewVolumeHelper(DataRoot)
+func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *nodeServer {
 	return &nodeServer{
 		nodeID:            nodeId,
 		maxVolumesPerNode: maxVolumesPerNode,
@@ -49,6 +48,9 @@ func (ns *nodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 }
 
 func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	if req.GetVolumeCapability() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
+	}
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
@@ -104,7 +106,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 		if !notMount {
 			// It's already mounted.
-			glog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", targetPath)
+			klog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", targetPath)
 			return &csi.NodePublishVolumeResponse{}, nil
 		}
 
@@ -219,7 +221,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	glog.V(5).Infof("hostpath: volume %s has been unpublished.", targetPath)
+	klog.V(5).Infof("hostpath: volume %s has been unpublished.", targetPath)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }

@@ -2,10 +2,10 @@ package sharedhostpath
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	klog "k8s.io/klog/v2"
 )
 
 type identityServer struct {
@@ -23,7 +23,7 @@ func NewIdentityServer(name string, isController bool, version string) *identity
 }
 
 func (ids *identityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	glog.V(5).Infof("Using default GetPluginInfo")
+	klog.V(5).Infof("Using default GetPluginInfo")
 
 	if ids.name == "" {
 		return nil, status.Error(codes.Unavailable, "Driver name not configured")
@@ -44,7 +44,7 @@ func (ids *identityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*c
 }
 
 func (ids *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	glog.V(5).Infof("Using default capabilities")
+	klog.V(5).Infof("Using default capabilities")
 	if ids.isController {
 		return &csi.GetPluginCapabilitiesResponse{
 			Capabilities: []*csi.PluginCapability{{

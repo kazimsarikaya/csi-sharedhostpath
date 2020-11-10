@@ -4,18 +4,22 @@ import (
 	"flag"
 	"fmt"
 	"github.com/kazimsarikaya/csi-sharedhostpath/internal/sharedhostpath"
+	klog "k8s.io/klog/v2"
 	"os"
 	"path"
 )
 
 func init() {
+	klog.InitFlags(nil)
 	flag.Set("logtostderr", "true")
 }
 
 var (
-	endpoint          = flag.String("endpoint", "unix://tmp/csi.sock", "CSI endpoint")
+	endpoint          = flag.String("endpoint", "unix:///tmp/csi.sock", "CSI endpoint")
 	driverName        = flag.String("drivername", "sharedhostpath.csi.k8s.io", "name of the driver")
 	nodeID            = flag.String("nodeid", "", "node id")
+	dataRoot          = flag.String("dataroot", "/csi-data-dir", "node id")
+	dsn               = flag.String("dsn", "", "postgres data dsn")
 	maxVolumesPerNode = flag.Int64("maxvolumespernode", 0, "limit of volumes per node")
 	showVersion       = flag.Bool("version", false, "Show version.")
 	controller        = flag.Bool("controller", false, "Run as controller.")
@@ -59,7 +63,7 @@ func handle() {
 	}
 
 	if *rebuildsymlinks || *cleanupdangling {
-		vh, err := sharedhostpath.NewVolumeHelper(sharedhostpath.DataRoot)
+		vh, err := sharedhostpath.NewVolumeHelper(*dataRoot, *dsn)
 		if err != nil {
 			fmt.Printf("cannot create volume helper: %v", err)
 			os.Exit(1)
@@ -71,7 +75,7 @@ func handle() {
 		}
 
 	} else {
-		driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *maxVolumesPerNode, version)
+		driver, err := sharedhostpath.NewSharedHostPathDriver(*driverName, *nodeID, *endpoint, *dataRoot, *dsn, *maxVolumesPerNode, version)
 		if err != nil {
 			fmt.Printf("Failed to initialize driver: %s\n", err.Error())
 			os.Exit(1)

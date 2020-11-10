@@ -3,11 +3,11 @@ package sharedhostpath
 import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"github.com/google/uuid"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	klog "k8s.io/klog/v2"
 )
 
 type controllerServer struct {
@@ -29,8 +29,7 @@ const (
 	typeParameter      = "sharedhostpath.csi.k8s.io/type"
 )
 
-func NewControllerServer(nodeID string) *controllerServer {
-	vh, _ := NewVolumeHelper(DataRoot)
+func NewControllerServer(nodeID string, vh *VolumeHelper) *controllerServer {
 	return &controllerServer{
 		caps: getControllerServiceCapabilities(
 			[]csi.ControllerServiceCapability_RPC_Type{
@@ -51,7 +50,7 @@ func getControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_T
 	var csc []*csi.ControllerServiceCapability
 
 	for _, cap := range cl {
-		glog.V(5).Infof("Enabling controller service capability: %v", cap.String())
+		klog.V(5).Infof("Enabling controller service capability: %v", cap.String())
 		csc = append(csc, &csi.ControllerServiceCapability{
 			Type: &csi.ControllerServiceCapability_Rpc{
 				Rpc: &csi.ControllerServiceCapability_RPC{
@@ -123,7 +122,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	var vtype string
 	var found bool
 	if vtype, found = parameters[typeParameter]; !found {
-		return nil, status.Error(codes.InvalidArgument, "storage class parameter required: %s")
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("storage class parameter required: %s", typeParameter))
 	}
 	if vtype == "disk" {
 		isBlock = true
@@ -133,6 +132,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	capacity := uint64(req.GetCapacityRange().GetRequiredBytes())
+	capacity = fixCapacity(capacity)
 	if capacity >= maxStorageCapacity {
 		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
 	}
@@ -150,7 +150,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 		preq, err := vol.PopulateVolumeIfRequired()
 		if err == nil {
-			if preq {
+			if preq || (vol.Capacity == capacity && vol.IsBlock == isBlock) {
 				return &csi.CreateVolumeResponse{
 					Volume: &csi.Volume{
 						VolumeId:           vol.VolID,
@@ -196,7 +196,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create volume %v: %v", volumeID, err)
 	}
-	glog.V(5).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
+	klog.V(5).Infof("created volume %s at path %s", vol.VolID, vol.VolPath)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -215,11 +215,21 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	volId := req.GetVolumeId()
+
+	vol, err := cs.vh.GetVolume(volId)
+	if err != nil {
+		status.Errorf(codes.Internal, "failed to get volume %v: %v", volId, err)
+	}
+
+	if vol == nil {
+		return &csi.DeleteVolumeResponse{}, nil
+	}
+
 	if err := cs.vh.DeleteVolume(volId); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete volume %v: %v", volId, err)
 	}
 
-	glog.V(5).Infof("volume %v successfully deleted", volId)
+	klog.V(5).Infof("volume %v successfully deleted", volId)
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
