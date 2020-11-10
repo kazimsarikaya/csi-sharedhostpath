@@ -64,6 +64,8 @@ spec:
           - "--endpoint=$(CSI_ENDPOINT)"
           - "--nodeid=${KUBE_NODE_NAME}"
           - --controller
+          - "--dataroot=/csi-data-dir"
+          - "--dsn=${PLUGIN_DSN}"
         env:
           - name: CSI_ENDPOINT
             value: unix:///csi/csi.sock
@@ -72,6 +74,8 @@ spec:
               fieldRef:
                 apiVersion: v1
                 fieldPath: spec.nodeName
+          - name: PLUGIN_DSN
+            value: "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=plugindb sslmode=disable"
         securityContext:
           privileged: true
         ports:
@@ -173,6 +177,8 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=${KUBE_NODE_NAME}"
             - --node
+            - "--dataroot=/csi-data-dir"
+            - "--dsn=${PLUGIN_DSN}"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -181,6 +187,8 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: PLUGIN_DSN
+              value: "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=plugindb sslmode=disable"
           securityContext:
             privileged: true
           ports:
