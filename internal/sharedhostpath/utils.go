@@ -296,6 +296,15 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 	return vh.ReBuildSymLinks()
 }
 
+func (vh *VolumeHelper) Close() error {
+	sqlDB, err := vh.db.DB()
+	if err != nil {
+		return errors.New(fmt.Sprintf("cannot get sql db object: %v", err.Error()))
+	}
+	sqlDB.Close()
+	return nil
+}
+
 func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 	var err error
 	_, err = os.Lstat(vol.VolPath)

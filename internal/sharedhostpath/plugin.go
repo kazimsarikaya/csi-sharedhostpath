@@ -38,6 +38,15 @@ func NewSharedHostPathDriver(driverName, nodeID, endpoint, dataRoot, dsn string,
 	if endpoint == "" {
 		return nil, errors.New("no driver endpoint provided")
 	}
+
+	if dataRoot == "" {
+		return nil, errors.New("no data root provided")
+	}
+
+	if dsn == "" {
+		return nil, errors.New("no dsn (connstring) provided")
+	}
+
 	if version != "" {
 		vendorVersion = version
 	}
@@ -96,8 +105,10 @@ func (shp *sharedHostPath) RunBoth() {
 
 func (shp *sharedHostPath) Stop() {
 	shp.server.Stop()
+	shp.vh.Close()
 }
 
 func (shp *sharedHostPath) ForceStop() {
 	shp.server.ForceStop()
+	shp.vh.Close()
 }

@@ -1,106 +1,123 @@
 package sharedhostpath
 
 import (
-	"flag"
-	"github.com/stretchr/testify/assert"
-	klog "k8s.io/klog/v2"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"gorm.io/gorm"
 	"os"
-	"testing"
 )
 
-var (
-	dataRoot = flag.String("dataroot", "", "node id")
-	dsn      = flag.String("dsn", "", "postgres data dsn")
-)
+var _ = Describe("Utils Methods Tests", func() {
 
-func init() {
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
-	klog.SetOutput(os.Stdout)
-}
+	Context("Driver Test", func() {
 
-func TestCreateStorageFS(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	_, err = vh.CreateVolume("d86b0dbb-198f-4642-a4f1-de348da19c99", "test-name-1", "test-pv-1", "test-pvc-1", "test-ns-1", 1<<20, false)
-	if err != nil {
-		t.Errorf("create volume failed %s", err)
-	}
-	assert.DirExistsf(t, *dataRoot+"/vols/d8/6b/0d/d86b0dbb-198f-4642-a4f1-de348da19c99", "no volume: failed")
-}
+		var vh *VolumeHelper
 
-func TestCreateStorageBlock(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	_, err = vh.CreateVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186", "test-name-2", "test-pv-2", "test-pvc-2", "test-ns-2", 1<<20, true)
-	if err != nil {
-		t.Errorf("create volume failed %s", err)
-	}
-	assert.FileExistsf(t, *dataRoot+"/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186", "no volume: failed")
-}
+		BeforeEach(func() {
+			var err error
+			vh, err = NewVolumeHelper(*dataRoot, *dsn)
+			Expect(vh, err).ToNot(BeNil(), "cannot create volume helper")
+		})
 
-func TestGetVolume(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	vol, err := vh.GetVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186")
-	if err != nil {
-		t.Errorf("get volume failed %s", err)
-	}
-	if vol != nil {
-		assert.EqualValuesf(t, "549f7cb1-7da1-4b46-97c0-03cbd5a2186", vol.VolID, "returned volume is different")
-	}
-}
+		AfterEach(func() {
+			err := vh.Close()
+			Expect(err).To(BeNil(), "cannot close volume helper")
+		})
 
-func TestDeleteVolume(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	err = vh.DeleteVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186")
-	if err != nil {
-		t.Errorf("delete volume failed %s", err)
-	}
-	assert.NoFileExistsf(t, *dataRoot+"/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186", "volume delete if failed")
-	assert.NoFileExistsf(t, *dataRoot+"/syms/test-ns-2/test-pvc-2", "symlink delete if failed")
-}
+		var _ = Describe("Test open/close", func() {
+			It("Should be succeed", func() {})
+		})
 
-func TestGetVolumeIdByName(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	volid, err := vh.GetVolumeIdByName("test-name-1")
-	if err != nil {
-		t.Errorf("get volume id by name failed %s", err)
-	}
-	assert.EqualValuesf(t, "d86b0dbb-198f-4642-a4f1-de348da19c99", volid, "returned volume is different")
-}
+		var _ = Describe("Test create filesystem volume", func() {
+			It("volume should be created", func() {
+				vol, err := vh.CreateVolume("d86b0dbb-198f-4642-a4f1-de348da19c99", "test-name-1", "test-pv-1", "test-pvc-1", "test-ns-1", 1<<20, false)
+				Expect(vol, err).ToNot(BeNil(), "cannot create volume")
+			})
+			It("volume folder should be exists", func() {
+				Expect(*dataRoot + "/vols/d8/6b/0d/d86b0dbb-198f-4642-a4f1-de348da19c99").Should(BeADirectory())
+			})
+			It("volume symlink should be exits", func() {
+				Expect(*dataRoot + "/syms/test-ns-1/test-pvc-1").Should(BeAnExistingFile())
+			})
+		})
 
-func TestReBuildSymLinks(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	err = vh.ReBuildSymLinks()
-	if err != nil {
-		t.Errorf("cannot rebuild symlinks: %v", err)
-	}
-}
+		var _ = Describe("Test create block volume", func() {
+			It("volume should be created", func() {
+				vol, err := vh.CreateVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186", "test-name-2", "test-pv-2", "test-pvc-2", "test-ns-2", 1<<20, true)
+				Expect(vol, err).ToNot(BeNil(), "cannot create volume")
+			})
+			It("volume file should be exists", func() {
+				Expect(*dataRoot + "/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186").Should(BeAnExistingFile())
+			})
+			It("volume symlink should be exits", func() {
+				Expect(*dataRoot + "/syms/test-ns-2/test-pvc-2").Should(BeAnExistingFile())
+			})
+		})
 
-func TestCleanUpDanglingVolumes(t *testing.T) {
-	vh, err := NewVolumeHelper(*dataRoot, *dsn)
-	if err != nil {
-		t.Errorf("cannot create volume helper: %v", err)
-	}
-	err = vh.CleanUpDanglingVolumes()
-	if err != nil {
-		t.Errorf("clean up dangling volumes failed %s", err)
-	}
-	assert.NoFileExistsf(t, *dataRoot+"/vols/d8/6b/0d/d86b0dbb-198f-4642-a4f1-de348da19c99", "clean up dangling volumes failed")
-}
+		var _ = Describe("Test getting volume", func() {
+			var vol *Volume
+			var err error
+			It("volume should be returned", func() {
+				vol, err = vh.GetVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186")
+				Expect(vol, err).ToNot(BeNil(), "cannot get volume")
+			})
+			It("volume id should be equals to queried", func() {
+				Expect(vol.VolID).To(Equal("549f7cb1-7da1-4b46-97c0-03cbd5a2186"))
+			})
+		})
+
+		var _ = Describe("Test deleting volume", func() {
+			var vol *Volume
+			var err error
+			It("volume should be deleted", func() {
+				err = vh.DeleteVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186")
+				Expect(err).To(BeNil(), "cannot get volume")
+			})
+			It("volume should not be returned", func() {
+				vol, err = vh.GetVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186")
+				Expect(vol).To(BeNil(), "cannot delete volume")
+				Expect(err).Should(MatchError(gorm.ErrRecordNotFound))
+			})
+			It("volume file should not be exists", func() {
+				Expect(*dataRoot + "/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186").ShouldNot(BeAnExistingFile())
+			})
+			It("volume symlink should not be exits", func() {
+				Expect(*dataRoot + "/syms/test-ns-2/test-pvc-2").ShouldNot(BeAnExistingFile())
+			})
+		})
+
+		var _ = Describe("Get volume id by name", func() {
+			var volid string
+			var err error
+			It("volume id should be found", func() {
+				volid, err = vh.GetVolumeIdByName("test-name-1")
+				Expect(volid).ShouldNot(Equal(""))
+				Expect(err).To(BeNil(), "error occured")
+			})
+			It("volume id shoul be expected", func() {
+				Expect(volid).To(Equal("d86b0dbb-198f-4642-a4f1-de348da19c99"), "volid is not expected")
+			})
+		})
+
+		var _ = Describe("Rebuild symlins", func() {
+			It("rebuild should be work", func() {
+				err := vh.ReBuildSymLinks()
+				Expect(err).To(BeNil(), "error occured")
+			})
+			It("symlink should be exists", func() {
+				Expect(*dataRoot + "/syms/test-ns-1/test-pvc-1").Should(BeAnExistingFile())
+			})
+		})
+
+		var _ = Describe("Cleanup dangling volumes", func() {
+			os.MkdirAll(*dataRoot+"/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186", 0750)
+			It("rebuild should be work", func() {
+				err := vh.CleanUpDanglingVolumes()
+				Expect(err).To(BeNil(), "error occured")
+			})
+			It("volume should not be exists", func() {
+				Expect(*dataRoot + "/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186").ShouldNot(BeADirectory())
+			})
+		})
+	})
+})

@@ -18,7 +18,7 @@ done
 if [ "x$1" == "xrun" ]; then
   for tf in $(find . -type f -name "*.test");
   do
-    ./$tf -dataroot "./tmp/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=192.168.99.114 sslmode=disable" -test.v -v 9 || exit 1
+    ./$tf -dataroot "./tmp/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=192.168.99.114 sslmode=disable" -ginkgo.v 9 || exit 1
   done
   docker rm -f testdb
 fi

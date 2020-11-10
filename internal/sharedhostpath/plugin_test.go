@@ -7,14 +7,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"os"
-	"testing"
 )
-
-func TestDriver(t *testing.T) {
-	// Setup the full driver and its environment
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Shared Host Path Driver Suite")
-}
 
 var shp *sharedHostPath
 var address string = "unix:///tmp/csi.socket"
