@@ -1,0 +1,294 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: patronidemo
+  namespace: storage
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patronidemo-config
+  namespace: storage
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: patronidemo
+  namespace: storage
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  selector:
+    matchLabels:
+      application: patroni
+      cluster-name: patronidemo
+  replicas: 3
+  serviceName: patronidemo
+  template:
+    metadata:
+      labels:
+        application: patroni
+        cluster-name: patronidemo
+    spec:
+      serviceAccountName: patronidemo
+      nodeSelector:
+        sharedhostpath.csi.k8s.io: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "cluster-name"
+                    operator: In
+                    values:
+                    - patronidemo
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: patronidemo
+        image: kazimsarikaya/patroni:latest
+        imagePullPolicy: Always
+        readinessProbe:
+          httpGet:
+            scheme: HTTP
+            path: /readiness
+            port: 8008
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        ports:
+        - containerPort: 8008
+          protocol: TCP
+        - containerPort: 5432
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /home/postgres/pgdata
+          name: pgdata
+        env:
+        - name: PATRONI_KUBERNETES_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PATRONI_KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PATRONI_KUBERNETES_BYPASS_API_SERVICE
+          value: 'false'
+        - name: PATRONI_KUBERNETES_USE_ENDPOINTS
+          value: 'false'
+        - name: PATRONI_KUBERNETES_LABELS
+          value: '{application: patroni, cluster-name: patronidemo}'
+        - name: PATRONI_SUPERUSER_USERNAME
+          value: postgres
+        - name: PATRONI_SUPERUSER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patronidemo
+              key: superuser-password
+        - name: PATRONI_REPLICATION_USERNAME
+          value: standby
+        - name: PATRONI_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: patronidemo
+              key: replication-password
+        - name: PATRONI_SCOPE
+          value: patronidemo
+        - name: PATRONI_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PATRONI_POSTGRESQL_DATA_DIR
+          value: /home/postgres/pgdata/pgroot/data
+        - name: PATRONI_POSTGRESQL_PGPASS
+          value: /tmp/pgpass
+        - name: PATRONI_POSTGRESQL_LISTEN
+          value: '0.0.0.0:5432'
+        - name: PATRONI_RESTAPI_LISTEN
+          value: '0.0.0.0:8008'
+      terminationGracePeriodSeconds: 0
+  volumeClaimTemplates:
+  - metadata:
+     labels:
+       application: patroni
+       cluster-name: patronidemo
+     name: pgdata
+    spec:
+     accessModes:
+     - ReadWriteOnce
+     resources:
+       requests:
+         storage: 1Gi
+     selector:
+       matchLabels:
+         application: patroni
+         cluster-name: patronidemo
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patronidemo
+  namespace: storage
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patronidemo-repl
+  namespace: storage
+  labels:
+    application: patroni
+    cluster-name:  patronidemo
+    role: replica
+spec:
+  type: ClusterIP
+  selector:
+    application: patroni
+    cluster-name: patronidemo
+    role: replica
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: patronidemo
+  namespace: storage
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+type: Opaque
+data:
+  superuser-password: emFsYW5kbw==
+  replication-password: cmVwLXBhc3M=
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patronidemo
+  namespace: storage
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - get
+  - patch
+  - update
+  - list
+  - watch
+  - delete
+  - deletecollection
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patronidemo
+  namespace: storage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: patronidemo
+subjects:
+- kind: ServiceAccount
+  name: patronidemo
+  namespace: storage
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: patronidemo-db-0
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/kube-pvs/db/db-0
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: patronidemo-db-1
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/kube-pvs/db/db-1
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: patronidemo-db-2
+  labels:
+    application: patroni
+    cluster-name: patronidemo
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/kube-pvs/db/db-2
+  persistentVolumeReclaimPolicy: Retain
