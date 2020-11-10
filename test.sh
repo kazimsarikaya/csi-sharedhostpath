@@ -7,9 +7,12 @@ go mod tidy
 go mod vendor
 for pkg in `go list ./...`;
 do
-  go test -c $pkg -ldflags "-X main.version=$REV -X main.buildTime=$NOW"
+  go test -c $pkg
 done
-for tf in $(find . -type f -name "*.test");
-do
-  ./$tf -test.v -v 9 || exit 1
-done
+
+if [ "x$1" == "xrun" ]; then
+  for tf in $(find . -type f -name "*.test");
+  do
+    ./$tf -test.v -v 9 || exit 1
+  done
+fi

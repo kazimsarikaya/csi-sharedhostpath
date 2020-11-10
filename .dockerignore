@@ -1,0 +1,10 @@
+bin/
+deploy/
+docker/
+examples/
+patroni/
+tests/
+tmp/
+vendor/
+*.test
+docker.sh
