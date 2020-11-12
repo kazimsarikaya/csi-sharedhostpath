@@ -23,13 +23,18 @@ type sharedHostPath struct {
 }
 
 var (
-	vendorVersion = "dev"
+	vendorVersion   = "dev"
+	fstypeParameter = "/fsType"
+	typeParameter   = "/type"
 )
 
 func NewSharedHostPathDriver(driverName, nodeID, endpoint, dataRoot, dsn string, maxVolumesPerNode int64, version string) (*sharedHostPath, error) {
 	if driverName == "" {
 		return nil, errors.New("no driver name provided")
 	}
+
+	fstypeParameter = driverName + fstypeParameter
+	typeParameter = driverName + typeParameter
 
 	if nodeID == "" {
 		return nil, errors.New("no node id provided")

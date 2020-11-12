@@ -1,0 +1,10 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-sharedhostpath-folder
+provisioner: sharedhostpath.sanaldiyar.com
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  sharedhostpath.sanaldiyar.com/type: "folder"

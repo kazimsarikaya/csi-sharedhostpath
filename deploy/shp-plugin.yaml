@@ -59,7 +59,7 @@ spec:
         image: kazimsarikaya/csi-sharedhostpath:dev-latest
         imagePullPolicy: Always
         args:
-          - "--drivername=sharedhostpath.csi.k8s.io"
+          - "--drivername=sharedhostpath.sanaldiyar.com"
           - "--v=9"
           - "--endpoint=$(CSI_ENDPOINT)"
           - "--nodeid=${KUBE_NODE_NAME}"
@@ -172,7 +172,7 @@ spec:
           image: kazimsarikaya/csi-sharedhostpath:dev-latest
           imagePullPolicy: Always
           args:
-            - "--drivername=sharedhostpath.csi.k8s.io"
+            - "--drivername=sharedhostpath.sanaldiyar.com"
             - "--v=9"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--nodeid=${KUBE_NODE_NAME}"
@@ -270,6 +270,11 @@ spec:
             args:
             - --job-cleanupdangling
             - "--v=9"
+            - "--dataroot=/csi-data-dir"
+            - "--dsn=${PLUGIN_DSN}"
+            env:
+            - name: PLUGIN_DSN
+              value: "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=plugindb sslmode=disable"
             volumeMounts:
             - mountPath: /csi-data-dir
               name: csi-data-dir

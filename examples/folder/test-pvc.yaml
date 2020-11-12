@@ -10,15 +10,3 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: csi-sharedhostpath-folder
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: csi-pvc-disk
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: csi-sharedhostpath-disk

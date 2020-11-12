@@ -14,7 +14,7 @@ var address string = "unix:///tmp/csi.socket"
 
 var _ = BeforeSuite(func() {
 	var err error
-	shp, err = NewSharedHostPathDriver("sharedhostpath.csi.k8s.io", "testnode", address, *dataRoot, *dsn, 0, "dev")
+	shp, err = NewSharedHostPathDriver("sharedhostpath.sanaldiyar.com", "testnode", address, *dataRoot, *dsn, 0, "dev")
 	Expect(shp, err).ToNot(BeNil(), "cannot create driver")
 	go func() {
 		shp.RunBoth()
@@ -36,10 +36,10 @@ var _ = Describe("SharedHostPathDriver", func() {
 			TestVolumeSize: 1 * 1024 * 1024 * 1024,
 			IDGen:          &sanity.DefaultIDGenerator{},
 			TestVolumeParameters: map[string]string{
-				"sharedhostpath.csi.k8s.io/type":   "folder",
-				"csi.storage.k8s.io/pvc/name":      "sanity-pvc",
-				"csi.storage.k8s.io/pvc/namespace": "sanity-ns",
-				"csi.storage.k8s.io/pv/name":       "sanity-pv",
+				"sharedhostpath.sanaldiyar.com/type": "folder",
+				"csi.storage.k8s.io/pvc/name":        "sanity-pvc",
+				"csi.storage.k8s.io/pvc/namespace":   "sanity-ns",
+				"csi.storage.k8s.io/pv/name":         "sanity-pv",
 			},
 		}
 
@@ -51,11 +51,11 @@ var _ = Describe("SharedHostPathDriver", func() {
 			TestVolumeSize: 1 * 1024 * 1024 * 1024,
 			IDGen:          &sanity.DefaultIDGenerator{},
 			TestVolumeParameters: map[string]string{
-				"sharedhostpath.csi.k8s.io/type":   "disk",
-				"sharedhostpath.csi.k8s.io/fsType": "xfs",
-				"csi.storage.k8s.io/pvc/name":      "sanity-pvc",
-				"csi.storage.k8s.io/pvc/namespace": "sanity-ns",
-				"csi.storage.k8s.io/pv/name":       "sanity-pv",
+				"sharedhostpath.sanaldiyar.com/type":   "disk",
+				"sharedhostpath.sanaldiyar.com/fsType": "xfs",
+				"csi.storage.k8s.io/pvc/name":          "sanity-pvc",
+				"csi.storage.k8s.io/pvc/namespace":     "sanity-ns",
+				"csi.storage.k8s.io/pv/name":           "sanity-pv",
 			},
 		}
 

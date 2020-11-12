@@ -25,8 +25,6 @@ const (
 const (
 	deviceID           = "deviceID"
 	maxStorageCapacity = 1 << 40
-	fstypeParameter    = "sharedhostpath.csi.k8s.io/fsType"
-	typeParameter      = "sharedhostpath.csi.k8s.io/type"
 )
 
 func NewControllerServer(nodeID string, vh *VolumeHelper) *controllerServer {

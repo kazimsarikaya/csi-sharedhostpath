@@ -1,7 +1,7 @@
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: sharedhostpath.csi.k8s.io
+  name: sharedhostpath.sanaldiyar.com
   namespace: storage
 spec:
   # Supports persistent and ephemeral inline volumes.

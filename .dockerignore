@@ -8,3 +8,4 @@ tmp/
 vendor/
 *.test
 docker.sh
+README.md
