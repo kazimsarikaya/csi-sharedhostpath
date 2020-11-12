@@ -65,6 +65,9 @@ func getControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_T
 
 func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
+	var vol *Volume
+	var err error
+
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID cannot be empty")
 	}
@@ -72,13 +75,16 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, req.VolumeId)
 	}
 
-	if _, err := cs.vh.GetVolume(req.GetVolumeId()); err != nil {
+	if vol, err = cs.vh.GetVolume(req.GetVolumeId()); err != nil {
 		return nil, status.Error(codes.NotFound, req.GetVolumeId())
 	}
 
 	for _, cap := range req.GetVolumeCapabilities() {
 		if cap.GetMount() == nil && cap.GetBlock() == nil {
 			return nil, status.Error(codes.InvalidArgument, "cannot have both mount and block access type be undefined")
+		}
+		if vol.IsBlock && cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+			return nil, status.Error(codes.InvalidArgument, "block backend can be accessd only SINGLE_NODE_WRITER")
 		}
 	}
 
@@ -135,6 +141,14 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	capacity = fixCapacity(capacity)
 	if capacity >= maxStorageCapacity {
 		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
+	}
+
+	if isBlock {
+		for _, cap := range caps {
+			if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+				return nil, status.Error(codes.InvalidArgument, "block backend can be accessd only SINGLE_NODE_WRITER")
+			}
+		}
 	}
 
 	volName := req.GetName()
