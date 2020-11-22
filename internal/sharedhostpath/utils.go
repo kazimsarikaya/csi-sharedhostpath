@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	klog "k8s.io/klog/v2"
 	utilexec "k8s.io/utils/exec"
 	"os"
@@ -42,6 +43,21 @@ type Volume struct {
 	VolPath   string `gorm:"uniqueIndex; not null"`
 }
 
+type NodeInfo struct {
+	ID       string    `gorm:"primaryKey"`
+	LastSeen time.Time `sql:"DEFAULT:current_timestamp"`
+}
+
+type NodePublishVolumeInfo struct {
+	StorageID uint64 `gorm:"autoIncrement"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+	VolID     string         `gorm:"index; not null"`
+	NodeID    string         `gorm:"index; not null"`
+	ReadOnly  bool
+}
+
 func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 	dataRoot, _ = filepath.Abs(dataRoot)
 	vols_path := filepath.Join(dataRoot, volume_base)
@@ -66,7 +82,7 @@ func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 	sqlDB, err := db.DB()
 	sqlDB.SetMaxOpenConns(5)
 
-	err = db.AutoMigrate(&Volume{})
+	err = db.AutoMigrate(&Volume{}, &NodeInfo{}, &NodePublishVolumeInfo{})
 
 	if err != nil {
 		klog.Errorf("cannot create db schema on dsn %s %v", dsn, err)
@@ -303,6 +319,44 @@ func (vh *VolumeHelper) Close() error {
 	}
 	sqlDB.Close()
 	return nil
+}
+
+func (vh *VolumeHelper) UpdateNodeInfoLastSeen(nodeId string, lastSeen time.Time) error {
+	err := vh.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"last_seen"}),
+	}).Create(&NodeInfo{ID: nodeId, LastSeen: lastSeen}).Error
+	return err
+}
+
+func (vh *VolumeHelper) GetNodeInfo(nodeId string, age uint64) (*NodeInfo, error) {
+	var ni NodeInfo
+	min_ls := time.Now().Add(time.Millisecond * time.Duration(age) * -1)
+	result := vh.db.Where("id = ? and last_seen >= ?", nodeId, min_ls).First(&ni)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &ni, result.Error
+}
+
+func (vh *VolumeHelper) CreateNodePublishVolumeInfo(volId, nodeId string, readonly bool) error {
+	npvi := NodePublishVolumeInfo{VolID: volId, NodeID: nodeId, ReadOnly: readonly}
+	err := vh.db.Create(&npvi).Error
+	return err
+}
+
+func (vh *VolumeHelper) GetNodePublishVolumeInfo(volId, nodeId string) (*NodePublishVolumeInfo, error) {
+	var npvi NodePublishVolumeInfo
+	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).First(&npvi)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, result.Error
+	}
+	return &npvi, result.Error
+}
+
+func (vh *VolumeHelper) DeleteNodePublishVolumeInfo(volId, nodeId string) error {
+	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).Delete(&NodePublishVolumeInfo{})
+	return result.Error
 }
 
 func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {

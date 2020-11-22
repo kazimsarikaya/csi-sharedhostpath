@@ -5,6 +5,7 @@ import (
 	. "github.com/onsi/gomega"
 	"gorm.io/gorm"
 	"os"
+	"time"
 )
 
 var _ = Describe("Utils Methods Tests", func() {
@@ -117,6 +118,89 @@ var _ = Describe("Utils Methods Tests", func() {
 			})
 			It("volume should not be exists", func() {
 				Expect(*dataRoot + "/vols/54/9f/7c/549f7cb1-7da1-4b46-97c0-03cbd5a2186").ShouldNot(BeADirectory())
+			})
+		})
+
+		var _ = Describe("Update node info last seen", func() {
+			It("create last seen", func() {
+				err := vh.UpdateNodeInfoLastSeen("testnode", time.Now())
+				Expect(err).To(BeNil(), "error occured when creating node last seen")
+			})
+			It("update last seen after 1 second", func() {
+				time.Sleep(time.Second)
+				err := vh.UpdateNodeInfoLastSeen("testnode", time.Now())
+				Expect(err).To(BeNil(), "error occured when creating node last seen")
+			})
+		})
+
+		var _ = Describe("Get node info", func() {
+			It("create last seen", func() {
+				err := vh.UpdateNodeInfoLastSeen("testnode", time.Now())
+				Expect(err).To(BeNil(), "error occured when creating node last seen")
+			})
+			It("get node info", func() {
+				ni, err := vh.GetNodeInfo("testnode", 1000)
+				Expect(err).To(BeNil(), "error occured when getting node info")
+				Expect(ni).NotTo(BeNil(), "node info is nil")
+			})
+			It("get node info", func() {
+				time.Sleep(time.Second)
+				ni, err := vh.GetNodeInfo("testnode", 0)
+				Expect(err).To(BeNil(), "error occured when getting node info")
+				Expect(ni).To(BeNil(), "node info is not nil")
+			})
+		})
+
+		var _ = Describe("Test NodePublishVolumeInfo operations", func() {
+			var cont bool = true
+			It("create node publish volume info", func() {
+				err := vh.CreateNodePublishVolumeInfo("test-volume", "test-node", false)
+				Expect(err).To(BeNil(), "cannot create npvi")
+				if err != nil {
+					cont = false
+				}
+			})
+			It("get node publish volume info", func() {
+				if !cont {
+					Skip("cannot test without create")
+				}
+				nvpi, err := vh.GetNodePublishVolumeInfo("test-volume", "test-node")
+				Expect(err).To(BeNil(), "cannot get npvi")
+				Expect(nvpi).NotTo(BeNil(), "nvpi is nil")
+			})
+			It("get node publish volume info with non exists volume", func() {
+				if !cont {
+					Skip("cannot test without succeed create")
+				}
+				nvpi, err := vh.GetNodePublishVolumeInfo("test-volume-noexists", "test-node")
+				Expect(err).Should(MatchError(gorm.ErrRecordNotFound))
+				Expect(nvpi).To(BeNil(), "nvpi is not  nil")
+			})
+			It("get node publish volume info with non exists node", func() {
+				if !cont {
+					Skip("cannot test without create")
+				}
+				nvpi, err := vh.GetNodePublishVolumeInfo("test-volume", "test-node-noexists")
+				Expect(err).Should(MatchError(gorm.ErrRecordNotFound))
+				Expect(nvpi).To(BeNil(), "nvpi is nil")
+			})
+			It("delete node publish volume info", func() {
+				if !cont {
+					Skip("cannot test without create")
+				}
+				err := vh.DeleteNodePublishVolumeInfo("test-volume", "test-node")
+				Expect(err).To(BeNil(), "cannot delete npvi")
+				if err != nil {
+					cont = false
+				}
+			})
+			It("get node publish volume info with deleted", func() {
+				if !cont {
+					Skip("cannot test without succeed delete")
+				}
+				nvpi, err := vh.GetNodePublishVolumeInfo("test-volume", "test-node")
+				Expect(err).Should(MatchError(gorm.ErrRecordNotFound))
+				Expect(nvpi).To(BeNil(), "nvpi is nil")
 			})
 		})
 	})

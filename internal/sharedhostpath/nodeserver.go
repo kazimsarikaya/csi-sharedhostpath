@@ -11,6 +11,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 	"k8s.io/utils/mount"
 	"os"
+	"time"
 )
 
 type nodeServer struct {
@@ -21,6 +22,25 @@ type nodeServer struct {
 }
 
 func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *nodeServer {
+	err := vh.UpdateNodeInfoLastSeen(nodeId, time.Now())
+	if err != nil {
+		klog.V(5).Infof("Cannot update node info %s %v", nodeId, err.Error())
+	}
+	lastSeenTicker := time.NewTicker(5 * time.Second)
+	go func() {
+		for {
+			select {
+			case t := <-lastSeenTicker.C:
+				err := vh.UpdateNodeInfoLastSeen(nodeId, t)
+				if err != nil {
+					klog.V(5).Infof("Cannot update node info %s %v", nodeId, err.Error())
+				} else {
+					klog.V(5).Infof("update node info %s", nodeId)
+				}
+			}
+		}
+	}()
+
 	return &nodeServer{
 		nodeID:            nodeId,
 		maxVolumesPerNode: maxVolumesPerNode,
