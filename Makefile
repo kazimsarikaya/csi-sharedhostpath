@@ -1,3 +1,5 @@
+.PHONY: docker
+
 all: test build
 
 test:
