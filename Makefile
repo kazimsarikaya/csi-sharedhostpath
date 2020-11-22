@@ -3,19 +3,13 @@
 all: test build
 
 test:
-	./test.sh
-
-test-run:
-	./test.sh run
+	./test.sh $(filter-out $@,$(MAKECMDGOALS))
 
 build:
 	./build.sh
 
 docker:
-	./docker.sh
+	./docker.sh $(filter-out $@,$(MAKECMDGOALS))
 
-docker-push:
-	./docker.sh push
-
-docker-test:
-	./docker.sh test
+%:
+	@:
