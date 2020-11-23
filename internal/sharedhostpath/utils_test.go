@@ -47,7 +47,7 @@ var _ = Describe("Utils Methods Tests", func() {
 
 		var _ = Describe("Test create filesystem volume", func() {
 			It("volume should be created", func() {
-				vol, err := vh.CreateVolume("d86b0dbb-198f-4642-a4f1-de348da19c99", "test-name-1", "test-pv-1", "test-pvc-1", "test-ns-1", 1<<20, false)
+				vol, err := vh.CreateVolume("d86b0dbb-198f-4642-a4f1-de348da19c99", "test-name-1", "test-pv-1", "test-pvc-1", "test-ns-1", 1<<30, false)
 				Expect(vol, err).ToNot(BeNil(), "cannot create volume")
 			})
 			It("volume folder should be exists", func() {
@@ -60,7 +60,7 @@ var _ = Describe("Utils Methods Tests", func() {
 
 		var _ = Describe("Test create block volume", func() {
 			It("volume should be created", func() {
-				vol, err := vh.CreateVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186", "test-name-2", "test-pv-2", "test-pvc-2", "test-ns-2", 1<<20, true)
+				vol, err := vh.CreateVolume("549f7cb1-7da1-4b46-97c0-03cbd5a2186", "test-name-2", "test-pv-2", "test-pvc-2", "test-ns-2", 1<<30, true)
 				Expect(vol, err).ToNot(BeNil(), "cannot create volume")
 			})
 			It("volume file should be exists", func() {
@@ -217,6 +217,76 @@ var _ = Describe("Utils Methods Tests", func() {
 				nvpi, err := vh.GetNodePublishVolumeInfo("test-volume", "test-node")
 				Expect(err).Should(MatchError(gorm.ErrRecordNotFound))
 				Expect(nvpi).To(BeNil(), "nvpi is nil")
+			})
+		})
+
+		var _ = Describe("Expand folder type volume", func() {
+			volname := "43eb5928-b7fe-48ef-895f-d259a92a9072"
+			var cont bool = true
+			var vol *Volume
+			var err error
+			It("test folder volume creation should succeed", func() {
+				vol, err = vh.CreateVolume(volname, "test-name-3", "test-pv-3", "test-pvc-3", "test-ns-3", 1<<30, false)
+				Expect(vol, err).ToNot(BeNil(), "cannot create folder volume")
+				if err != nil {
+					cont = false
+				}
+			})
+
+			It("expand volume", func() {
+				if !cont {
+					Skip("cannot test without volume")
+				}
+				err := vh.UpdateVolumeCapacity(vol, 2<<30)
+				Expect(err).To(BeNil(), "cannot delete npvi")
+			})
+
+			It("new volume size should be 2gib", func() {
+				if !cont {
+					Skip("cannot test without volume")
+				}
+				vol, err = vh.GetVolume(volname)
+				Expect(vol, err).ToNot(BeNil(), "cannot get volume")
+				Expect(vol.Capacity).To(Equal(int64(2<<30)), "vol size did not expended")
+			})
+		})
+
+		var _ = Describe("Expand disk type volume", func() {
+			volname := "2f92e632-1a6a-42f0-957f-be63a97e9261"
+			var cont bool = true
+			var vol *Volume
+			var err error
+			It("test disk volume creation should succeed", func() {
+				vol, err = vh.CreateVolume(volname, "test-name-4", "test-pv-4", "test-pvc-4", "test-ns-4", 1<<30, true)
+				Expect(vol, err).ToNot(BeNil(), "cannot create folder volume")
+				if err != nil {
+					cont = false
+				}
+			})
+
+			It("expand volume", func() {
+				if !cont {
+					Skip("cannot test without volume")
+				}
+				err := vh.UpdateVolumeCapacity(vol, 2<<30)
+				Expect(err).To(BeNil(), "cannot delete npvi")
+			})
+
+			It("new volume size should be 2gib", func() {
+				if !cont {
+					Skip("cannot test without volume")
+				}
+				vol, err := vh.GetVolume(volname)
+				Expect(vol, err).ToNot(BeNil(), "cannot get volume")
+				Expect(vol.Capacity).To(Equal(int64(2<<30)), "vol size did not expended")
+			})
+
+			It("file size should be 2gib", func() {
+				if !cont {
+					Skip("cannot test without volume")
+				}
+				fi, _ := os.Stat(vol.VolPath)
+				Expect(fi.Size()).To(Equal(int64(2<<30)), "file size did not expended")
 			})
 		})
 	})

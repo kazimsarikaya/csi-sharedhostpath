@@ -45,7 +45,7 @@ type VolumeHelper struct {
 }
 
 type Volume struct {
-	StorageID uint64 `gorm:"autoIncrement"`
+	StorageID int64 `gorm:"autoIncrement"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -54,7 +54,7 @@ type Volume struct {
 	PVName    string         `gorm:"not null"`
 	PVCName   string         `gorm:"not null"`
 	NSName    string         `gorm:"index; not null"`
-	Capacity  uint64
+	Capacity  int64
 	IsBlock   bool
 	VolPath   string `gorm:"uniqueIndex; not null"`
 }
@@ -65,7 +65,7 @@ type NodeInfo struct {
 }
 
 type NodePublishVolumeInfo struct {
-	StorageID uint64 `gorm:"autoIncrement"`
+	StorageID int64 `gorm:"autoIncrement"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -117,8 +117,7 @@ func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 	return vh, nil
 }
 
-func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname string,
-	capacity uint64, isblock bool) (*Volume, error) {
+func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname string, capacity int64, isblock bool) (*Volume, error) {
 	var err error = nil
 
 	prefix := fmt.Sprintf("%s/%s/%s/%s", vh.vols_path, volid[0:2], volid[2:4], volid[4:6])
@@ -192,6 +191,69 @@ func (vh *VolumeHelper) GetVolume(volid string) (*Volume, error) {
 		return nil, result.Error
 	}
 	return &vol, result.Error
+}
+
+func (vh *VolumeHelper) UpdateVolumeCapacity(vol *Volume, capacity int64) error {
+
+	tx := vh.db.Begin()
+	err := vh.db.Error
+	if tx == nil || err != nil {
+		klog.Errorf("cannot start transaction: %v", err)
+		return vh.db.Error
+	}
+
+	oldCapacity := vol.Capacity
+	vol.Capacity = capacity
+	err = vh.db.Model(&Volume{}).Where("vol_id = ?", vol.VolID).Update("capacity", vol.Capacity).Error
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if vol.IsBlock {
+		volume_path := vol.VolPath
+		fi, err := os.Stat(volume_path)
+
+		if err != nil {
+			tx.Rollback()
+			errstr := fmt.Sprintf("rollback: expanding volume error: cannot stat file: %s : %v", volume_path, err)
+			klog.Errorf(errstr)
+			return errors.New(errstr)
+		}
+
+		if fi.Size() != oldCapacity {
+			tx.Rollback()
+			errstr := fmt.Sprintf("rollback: expanding volume error: file size dismatch: db-> %v os-> %v", oldCapacity, fi.Size())
+			klog.Errorf(errstr)
+			return errors.New(errstr)
+		}
+
+		executor := utilexec.New()
+		cap_str := fmt.Sprintf("seek=%d", vol.Capacity)
+		vp_str := fmt.Sprintf("of=%s", vol.VolPath)
+		var output []byte
+		output, err = executor.Command("dd", "if=/dev/null", "bs=1", "count=0", cap_str, vp_str).CombinedOutput()
+		if err != nil {
+			tx.Rollback()
+			errstr := fmt.Sprintf("cannot expand volume file: %s %v %s", vol.VolPath, err.Error(), string(output))
+			klog.Errorf(errstr)
+			return errors.New(errstr)
+		}
+
+	}
+
+	if err != nil {
+		klog.Errorf("there is an error while expanding volume: %v, tran will be rollbacked", err)
+		tx.Rollback()
+		klog.Errorf("volume %s cannot be expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+	} else {
+		err = tx.Commit().Error
+	}
+	if err == nil {
+		klog.V(5).Infof("volume %s expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+	}
+
+	return err
 }
 
 func (vh *VolumeHelper) DeleteVolume(volid string) error {
@@ -345,7 +407,7 @@ func (vh *VolumeHelper) UpdateNodeInfoLastSeen(nodeId string, lastSeen time.Time
 	return err
 }
 
-func (vh *VolumeHelper) GetNodeInfo(nodeId string, age uint64) (*NodeInfo, error) {
+func (vh *VolumeHelper) GetNodeInfo(nodeId string, age int64) (*NodeInfo, error) {
 	var ni NodeInfo
 	min_ls := time.Now().Add(time.Millisecond * time.Duration(age) * -1)
 	result := vh.db.Where("id = ? and last_seen >= ?", nodeId, min_ls).First(&ni)
@@ -406,7 +468,7 @@ func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 	return false, nil
 }
 
-func fixCapacity(capacity uint64) uint64 {
+func fixCapacity(capacity int64) int64 {
 	if capacity < GiB {
 		capacity = GiB
 	}

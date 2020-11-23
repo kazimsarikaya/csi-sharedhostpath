@@ -19,7 +19,7 @@ package sharedhostpath
 import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kazimsarikaya/csi-sharedhostpath/internal/volumepathhandler"
+	"github.com/kazimsarikaya/csi-sharedhostpath/internal/volumehelpers"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -65,6 +65,13 @@ func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *no
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
 						Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+					},
+				},
+			},
+			&csi.NodeServiceCapability{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 					},
 				},
 			},
@@ -118,10 +125,10 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		if !vol.IsBlock {
 			return nil, status.Error(codes.InvalidArgument, "cannot stage a non-block volume as block volume")
 		}
-		volPathHandler := volumepathhandler.VolumePathHandler{}
+		volumePathHandler := volumehelpers.VolumePathHandler{}
 
 		// Get loop device from the volume path.
-		loopDevice, err := volPathHandler.GetLoopDevice(vol.VolPath)
+		loopDevice, err := volumePathHandler.AttachFileDevice(vol.VolPath)
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get the loop device: %v", err))
 		}
@@ -198,8 +205,8 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 				if fsType == "xfs" {
 					options = append(options, "nouuid")
 				}
-				volPathHandler := volumepathhandler.NewBlockVolumePathHandler()
-				loopDevice, err := volPathHandler.AttachFileDevice(vol.VolPath)
+				volumePathHandler := volumehelpers.NewBlockVolumePathHandler()
+				loopDevice, err := volumePathHandler.AttachFileDevice(vol.VolPath)
 				if err != nil {
 					return nil, status.Error(codes.Internal, fmt.Sprintf("cannot create loop device: %s", err.Error()))
 				}
@@ -246,8 +253,8 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	if vol.IsBlock {
-		volPathHandler := volumepathhandler.NewBlockVolumePathHandler()
-		err := volPathHandler.DetachFileDevice(vol.VolPath)
+		volumeHelpers := volumehelpers.NewBlockVolumePathHandler()
+		err := volumeHelpers.DetachFileDevice(vol.VolPath)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
@@ -360,12 +367,69 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
+func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume ID not provided")
+	}
+
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume path not provided")
+	}
+
+	vol, err := ns.vh.GetVolume(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	if !vol.IsBlock {
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
+	resize_fs := true
+	cap := req.GetVolumeCapability()
+	if cap != nil {
+		if cap.GetBlock() != nil {
+			resize_fs = false
+		}
+	}
+
+	volumePathHandler := volumehelpers.VolumePathHandler{}
+	loopDevice, err := volumePathHandler.GetLoopDevice(vol.VolPath)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get the loop device: %v", err))
+	}
+
+	err = volumePathHandler.ReReadFileSize(vol.VolPath)
+
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot resize backend: %v", err.Error()))
+	}
+
+	if resize_fs {
+		mounter := mount.New("")
+		notMnt, err := mount.IsNotMountPoint(mounter, volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeExpandVolume failed to check if volume path %q is mounted: %s", volumePath, err)
+		}
+
+		if notMnt {
+			return nil, status.Errorf(codes.NotFound, "NodeExpandVolume volume path %q is not mounted", volumePath)
+		}
+
+		r := volumehelpers.NewResizeFs(&mount.SafeFormatAndMount{Interface: mounter, Exec: utilexec.New()})
+
+		if _, err := r.Resize(loopDevice, volumePath); err != nil {
+			return nil, status.Errorf(codes.Internal, "NodeExpandVolume could not resize volume %q (%q):  %v", volumeID, req.GetVolumePath(), err)
+		}
+	}
+
+	return &csi.NodeExpandVolumeResponse{}, nil
+}
+
 /* Unimplemented methods beyond */
 
 func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }

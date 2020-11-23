@@ -49,6 +49,7 @@ func NewControllerServer(nodeID string, vh *VolumeHelper) *controllerServer {
 			[]csi.ControllerServiceCapability_RPC_Type{
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 			}),
 		nodeID: nodeID,
 		vh:     vh,
@@ -152,7 +153,7 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "cannot have both folder type and block access type")
 	}
 
-	capacity := uint64(req.GetCapacityRange().GetRequiredBytes())
+	capacity := int64(req.GetCapacityRange().GetRequiredBytes())
 	capacity = fixCapacity(capacity)
 	if capacity >= maxStorageCapacity {
 		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", capacity, maxStorageCapacity)
@@ -350,11 +351,45 @@ func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 }
 
-/* Unimplemented methods beyond */
-
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID missing in request")
+	}
+
+	capRange := req.GetCapacityRange()
+	if capRange == nil {
+		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume capacity range missing in request")
+	}
+
+	newCapacity := int64(capRange.GetRequiredBytes())
+	newCapacity = fixCapacity(newCapacity)
+	if newCapacity >= maxStorageCapacity {
+		return nil, status.Errorf(codes.OutOfRange, "Requested capacity %d exceeds maximum allowed %d", newCapacity, maxStorageCapacity)
+	}
+
+	vol, err := cs.vh.GetVolume(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("volume %s not found: %v", volumeID, err))
+	}
+
+	if newCapacity <= vol.Capacity {
+		return &csi.ControllerExpandVolumeResponse{CapacityBytes: vol.Capacity, NodeExpansionRequired: false}, nil
+	}
+
+	if err := cs.vh.UpdateVolumeCapacity(vol, newCapacity); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume cannot update volume size on db: %v", err.Error))
+	}
+
+	var need_node_expand bool = false
+	if vol.IsBlock {
+		need_node_expand = true
+	}
+
+	return &csi.ControllerExpandVolumeResponse{CapacityBytes: newCapacity, NodeExpansionRequired: need_node_expand}, nil
 }
+
+/* Unimplemented methods beyond */
 
 func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")

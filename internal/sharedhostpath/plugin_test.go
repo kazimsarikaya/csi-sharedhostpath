@@ -19,7 +19,7 @@ limitations under the License.
 package sharedhostpath
 
 import (
-	"github.com/kubernetes-csi/csi-test/pkg/sanity"
+	"github.com/kubernetes-csi/csi-test/v4/pkg/sanity"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"os"
@@ -44,35 +44,25 @@ var _ = AfterSuite(func() {
 var _ = Describe("SharedHostPathDriver", func() {
 	Context("Driver Test", func() {
 
-		var folder_config = &sanity.Config{
-			TargetPath:     os.TempDir() + "/csi-mount",
-			StagingPath:    os.TempDir() + "/csi-staging",
-			Address:        address,
-			SecretsFile:    "",
-			TestVolumeSize: 1 * 1024 * 1024 * 1024,
-			IDGen:          &sanity.DefaultIDGenerator{},
-			TestVolumeParameters: map[string]string{
-				"sharedhostpath.sanaldiyar.com/type": "folder",
-				"csi.storage.k8s.io/pvc/name":        "sanity-pvc",
-				"csi.storage.k8s.io/pvc/namespace":   "sanity-ns",
-				"csi.storage.k8s.io/pv/name":         "sanity-pv",
-			},
+		var folder_config = sanity.NewTestConfig()
+		folder_config.Address = address
+		folder_config.TestVolumeSize = 1 * 1024 * 1024 * 1024
+		folder_config.TestVolumeParameters = map[string]string{
+			"sharedhostpath.sanaldiyar.com/type": "folder",
+			"csi.storage.k8s.io/pvc/name":        "sanity-pvc",
+			"csi.storage.k8s.io/pvc/namespace":   "sanity-ns",
+			"csi.storage.k8s.io/pv/name":         "sanity-pv",
 		}
 
-		var disk_config = &sanity.Config{
-			TargetPath:     os.TempDir() + "/csi-mount",
-			StagingPath:    os.TempDir() + "/csi-staging",
-			Address:        address,
-			SecretsFile:    "",
-			TestVolumeSize: 1 * 1024 * 1024 * 1024,
-			IDGen:          &sanity.DefaultIDGenerator{},
-			TestVolumeParameters: map[string]string{
-				"sharedhostpath.sanaldiyar.com/type":   "disk",
-				"sharedhostpath.sanaldiyar.com/fsType": "xfs",
-				"csi.storage.k8s.io/pvc/name":          "sanity-pvc",
-				"csi.storage.k8s.io/pvc/namespace":     "sanity-ns",
-				"csi.storage.k8s.io/pv/name":           "sanity-pv",
-			},
+		var disk_config = sanity.NewTestConfig()
+		disk_config.Address = address
+		disk_config.TestVolumeSize = 1 * 1024 * 1024 * 1024
+		disk_config.TestVolumeParameters = map[string]string{
+			"sharedhostpath.sanaldiyar.com/type":   "disk",
+			"sharedhostpath.sanaldiyar.com/fsType": "xfs",
+			"csi.storage.k8s.io/pvc/name":          "sanity-pvc",
+			"csi.storage.k8s.io/pvc/namespace":     "sanity-ns",
+			"csi.storage.k8s.io/pv/name":           "sanity-pv",
 		}
 
 		BeforeEach(func() {
@@ -84,11 +74,11 @@ var _ = Describe("SharedHostPathDriver", func() {
 		})
 
 		Describe("CSI sanity Folder", func() {
-			sanity.GinkgoTest(folder_config)
+			sanity.GinkgoTest(&folder_config)
 		})
 
 		Describe("CSI sanity Disk", func() {
-			sanity.GinkgoTest(disk_config)
+			sanity.GinkgoTest(&disk_config)
 		})
 	})
 

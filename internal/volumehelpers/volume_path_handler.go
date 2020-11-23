@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package volumepathhandler
+package volumehelpers
 
 import (
 	"fmt"
@@ -61,6 +61,8 @@ type BlockVolumePathHandler interface {
 	DetachFileDevice(path string) error
 	// GetLoopDevice returns the full path to the loop device associated with the given path.
 	GetLoopDevice(path string) (string, error)
+	// ReReadFileSize re reads atached file size
+	ReReadFileSize(path string) error
 }
 
 // NewBlockVolumePathHandler returns a new instance of BlockVolumeHandler.

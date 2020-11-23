@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package volumepathhandler
+package volumehelpers
 
 import (
 	"bufio"
@@ -91,6 +91,21 @@ func (v VolumePathHandler) GetLoopDevice(path string) (string, error) {
 		return "", fmt.Errorf("losetup -j %s failed: %v", path, err)
 	}
 	return parseLosetupOutputForDevice(out, path)
+}
+
+// ReReadFileSize re reads atached file size
+func (v VolumePathHandler) ReReadFileSize(path string) error {
+	loopDev, err := v.GetLoopDevice(path)
+	if err != nil {
+		args := []string{"-c", loopDev}
+		cmd := exec.Command(losetupPath, args...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			klog.V(2).Infof("Failed reread file size %s for dev %s: %v %s", path, loopDev, err, out)
+			return fmt.Errorf("losetup -c %s failed for %s: %v", loopDev, path, err)
+		}
+	}
+	return err
 }
 
 func makeLoopDevice(path string) (string, error) {

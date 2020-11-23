@@ -6,9 +6,9 @@ require (
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/google/uuid v1.1.2
 	github.com/kubernetes-csi/csi-lib-utils v0.8.1
-	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
+	github.com/kubernetes-csi/csi-test/v4 v4.0.2
 	github.com/onsi/ginkgo v1.11.0
-	github.com/onsi/gomega v1.7.0
+	github.com/onsi/gomega v1.7.1
 	golang.org/x/net v0.0.0-20201031054903-ff519b6c9102
 	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
 	google.golang.org/grpc v1.33.1

@@ -63,13 +63,21 @@ func (ids *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.G
 	klog.V(5).Infof("Using default capabilities")
 	if ids.isController {
 		return &csi.GetPluginCapabilitiesResponse{
-			Capabilities: []*csi.PluginCapability{{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+			Capabilities: []*csi.PluginCapability{
+				{
+					Type: &csi.PluginCapability_Service_{
+						Service: &csi.PluginCapability_Service{
+							Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+						},
 					},
 				},
-			},
+				{
+					Type: &csi.PluginCapability_VolumeExpansion_{
+						VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
+							Type: csi.PluginCapability_VolumeExpansion_ONLINE,
+						},
+					},
+				},
 			},
 		}, nil
 	} else {
