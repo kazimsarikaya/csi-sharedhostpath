@@ -1,12 +1,9 @@
-.PHONY: docker
+.PHONY: docker build
 
-all: test build
-
-test:
-	./test.sh $(filter-out $@,$(MAKECMDGOALS))
+all: build
 
 build:
-	./build.sh
+	./build.sh $(filter-out $@,$(MAKECMDGOALS))
 
 docker:
 	./docker.sh $(filter-out $@,$(MAKECMDGOALS))

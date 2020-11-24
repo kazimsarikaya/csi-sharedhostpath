@@ -96,7 +96,7 @@ func (v VolumePathHandler) GetLoopDevice(path string) (string, error) {
 // ReReadFileSize re reads atached file size
 func (v VolumePathHandler) ReReadFileSize(path string) error {
 	loopDev, err := v.GetLoopDevice(path)
-	if err != nil {
+	if err == nil {
 		args := []string{"-c", loopDev}
 		cmd := exec.Command(losetupPath, args...)
 		out, err := cmd.CombinedOutput()
@@ -104,8 +104,11 @@ func (v VolumePathHandler) ReReadFileSize(path string) error {
 			klog.V(2).Infof("Failed reread file size %s for dev %s: %v %s", path, loopDev, err, out)
 			return fmt.Errorf("losetup -c %s failed for %s: %v", loopDev, path, err)
 		}
+	} else {
+		klog.V(2).Infof("GetLoopDevice failed for %s: %v", loopDev, err)
+		return fmt.Errorf("GetLoopDevice failed for %s: %v", loopDev, err)
 	}
-	return err
+	return nil
 }
 
 func makeLoopDevice(path string) (string, error) {
