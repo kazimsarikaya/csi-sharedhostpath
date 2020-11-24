@@ -1,11 +1,16 @@
+# remove binary files
 bin/**
+*.test
+# remove non-code folders
 deploy/**
 docker/**
 examples/**
 patroni/**
 tests/**
 tmp/**
+# always refresh depends
 vendor/**
-*.test
+# docker.sh is needed at remote site
 docker.sh
-README.md
+# we don't need any docs while building
+*.md
