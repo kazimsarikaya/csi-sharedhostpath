@@ -75,6 +75,20 @@ func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *no
 					},
 				},
 			},
+			&csi.NodeServiceCapability{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+					},
+				},
+			},
+			&csi.NodeServiceCapability{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_VOLUME_CONDITION,
+					},
+				},
+			},
 		},
 		vh: vh,
 	}
@@ -295,10 +309,12 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
+	var rawMount bool = false
 	if cap.GetBlock() != nil {
 		if !vol.IsBlock {
 			return nil, status.Error(codes.InvalidArgument, "cannot publish a non-block volume as block volume")
 		}
+		rawMount = true
 	}
 
 	mounter := mount.New("")
@@ -315,10 +331,9 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 	}
 
+	readOnly := req.GetReadonly()
 	if notMnt {
 		options := []string{"bind"}
-
-		readOnly := req.GetReadonly()
 		if readOnly {
 			options = append(options, "ro")
 		}
@@ -326,6 +341,13 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if err := mounter.Mount(stagingTargetPath, targetPath, "", options); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount block device: %s at %s: %v", stagingTargetPath, targetPath, err))
 		}
+	}
+
+	err = ns.vh.CreateNodePublishVolumeInfo(ns.nodeID, volumeID, targetPath, rawMount, readOnly)
+	if err != nil { // TODO: how to be impodent
+		mount.New("").Unmount(targetPath)
+		os.RemoveAll(targetPath)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to update node %s volume %s path %s info: %v", ns.nodeID, volumeID, targetPath, err))
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -362,6 +384,10 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	err = ns.vh.DeleteNodePublishVolumeInfo(ns.nodeID, volumeID, targetPath)
+	if err != nil {
+		klog.Errorf("cannot delete node %s publish volume %s info at path %s: %v", ns.nodeID, volumeID, targetPath, err)
+	}
 	klog.V(5).Infof("hostpath: volume %s has been unpublished.", targetPath)
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -419,17 +445,86 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		}
 
 		r := volumehelpers.NewResizeFs(&mount.SafeFormatAndMount{Interface: mounter, Exec: utilexec.New()})
-
+		klog.Infof("NodeExpandVolume Try to expand volume %s at %s", volumeID, volumePath)
 		if _, err := r.Resize(loopDevice, volumePath); err != nil {
 			return nil, status.Errorf(codes.Internal, "NodeExpandVolume could not resize volume %q (%q):  %v", volumeID, req.GetVolumePath(), err)
+		} else {
+			klog.Infof("NodeExpandVolume Volume %s at %s expanded", volumeID, volumePath)
 		}
 	}
 
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
-/* Unimplemented methods beyond */
+func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume ID not provided")
+	}
 
-func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume path not provided")
+	}
+
+	_, err := ns.vh.GetVolume(volumeID)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	_, err = ns.vh.GetNodePublishVolumeInfo(ns.nodeID, volumeID, volumePath)
+
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "volumePath %s is not same as volume's published mount", volumePath)
+	}
+
+	fi, err := os.Stat(volumePath)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot stat volumepath: %s : %v", volumePath, err)
+	}
+
+	var usage []*csi.VolumeUsage
+	var condition = &csi.VolumeCondition{}
+	if (fi.Mode() & os.ModeDir) == os.ModeDir {
+		stats, err := getStatistics(volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to retrieve capacity statistics for volume path %q: %s", volumePath, err)
+		}
+		usage = []*csi.VolumeUsage{
+			&csi.VolumeUsage{
+				Available: stats.availableBytes,
+				Total:     stats.totalBytes,
+				Used:      stats.usedBytes,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			&csi.VolumeUsage{
+				Available: stats.availableInodes,
+				Total:     stats.totalInodes,
+				Used:      stats.usedInodes,
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		}
+		//TODO: extra check for condition
+		condition.Abnormal = false
+		condition.Message = "ok"
+	} else {
+		totalBytes, err := getBlockDeviceSize(volumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "cannot get devicesize: %v", err)
+		}
+		usage = []*csi.VolumeUsage{
+			&csi.VolumeUsage{
+				Unit:  csi.VolumeUsage_BYTES,
+				Total: totalBytes,
+			},
+		}
+		//TODO: extra check for condition
+		condition.Abnormal = false
+		condition.Message = "ok"
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage:           usage,
+		VolumeCondition: condition,
+	}, nil
 }

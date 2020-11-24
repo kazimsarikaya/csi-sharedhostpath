@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	klog "k8s.io/klog/v2"
+	"strconv"
 )
 
 type controllerServer struct {
@@ -49,7 +50,12 @@ func NewControllerServer(nodeID string, vh *VolumeHelper) *controllerServer {
 			[]csi.ControllerServiceCapability_RPC_Type{
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+				csi.ControllerServiceCapability_RPC_PUBLISH_READONLY,
 				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+				csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+				csi.ControllerServiceCapability_RPC_LIST_VOLUMES_PUBLISHED_NODES,
+				csi.ControllerServiceCapability_RPC_GET_VOLUME,
+				csi.ControllerServiceCapability_RPC_VOLUME_CONDITION,
 			}),
 		nodeID: nodeID,
 		vh:     vh,
@@ -294,10 +300,10 @@ func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		}
 	}
 
-	nvpi, err := cs.vh.GetNodePublishVolumeInfo(volumeID, nodeID)
+	cpvi, err := cs.vh.GetControllerPublishVolumeInfo(volumeID, nodeID)
 	if err == nil {
-		if nvpi != nil {
-			if nvpi.ReadOnly != req.Readonly {
+		if cpvi != nil {
+			if cpvi.ReadOnly != req.Readonly {
 				return nil, status.Error(codes.AlreadyExists, "cannot publish readonly status dismatch")
 			} else {
 				return &csi.ControllerPublishVolumeResponse{
@@ -306,14 +312,14 @@ func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 			}
 		}
 	} else {
-		if nvpi != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("error at getting nvpi vol %s node %s: %v", volumeID, nodeID, err))
+		if cpvi != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("error at getting cpvi vol %s node %s: %v", volumeID, nodeID, err))
 		}
 	}
 
-	err = cs.vh.CreateNodePublishVolumeInfo(volumeID, nodeID, req.Readonly)
+	err = cs.vh.CreateControllerPublishVolumeInfo(volumeID, nodeID, req.Readonly)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot create nvpi vol %s node %s: %v", volumeID, nodeID, err))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("cannot create cpvi vol %s node %s: %v", volumeID, nodeID, err))
 	}
 
 	return &csi.ControllerPublishVolumeResponse{
@@ -334,17 +340,17 @@ func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	nodeID := req.GetNodeId()
-	nvpi, err := cs.vh.GetNodePublishVolumeInfo(volumeID, nodeID)
+	cpvi, err := cs.vh.GetControllerPublishVolumeInfo(volumeID, nodeID)
 
 	if err == nil {
-		err = cs.vh.DeleteNodePublishVolumeInfo(volumeID, nodeID)
+		err = cs.vh.DeleteControllerPublishVolumeInfo(volumeID, nodeID)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("error at deleting nvpi vol %s node %s: %v", volumeID, nodeID, err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("error at deleting cpvi vol %s node %s: %v", volumeID, nodeID, err))
 		}
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	} else {
-		if nvpi != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("error at getting nvpi vol %s node %s: %v", volumeID, nodeID, err))
+		if cpvi != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("error at getting cpvi vol %s node %s: %v", volumeID, nodeID, err))
 		} else {
 			return &csi.ControllerUnpublishVolumeResponse{}, nil
 		}
@@ -378,7 +384,7 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}
 
 	if err := cs.vh.UpdateVolumeCapacity(vol, newCapacity); err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume cannot update volume size on db: %v", err.Error))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ControllerExpandVolume cannot update volume size on db: %v", err.Error()))
 	}
 
 	var need_node_expand bool = false
@@ -389,11 +395,89 @@ func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	return &csi.ControllerExpandVolumeResponse{CapacityBytes: newCapacity, NodeExpansionRequired: need_node_expand}, nil
 }
 
-/* Unimplemented methods beyond */
+func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+	var startingToken int = 0
+	if req.StartingToken != "" {
+		parsedToken, err := strconv.ParseInt(req.StartingToken, 10, 32)
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "ListVolumes starting token %q is not valid: %s", req.StartingToken, err)
+		}
+		startingToken = int(parsedToken)
+	}
+
+	maxEntries := int(req.MaxEntries)
+	if maxEntries == 0 {
+		maxEntries = ^int(0)
+	}
+
+	vols, err := cs.vh.GetVolumesWithDetail(startingToken, maxEntries)
+
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ListVolumes cannot get volume list from db: %v", err.Error()))
+	}
+
+	var entries []*csi.ListVolumesResponse_Entry
+
+	for _, vol := range vols {
+		entries = append(entries, &csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				VolumeId:      vol["volumeId"].(string),
+				CapacityBytes: vol["capacity"].(int64),
+				VolumeContext: vol["parameters"].(map[string]string),
+			},
+			Status: &csi.ListVolumesResponse_VolumeStatus{
+				PublishedNodeIds: vol["published_node_ids"].([]string),
+				VolumeCondition: &csi.VolumeCondition{
+					Abnormal: vol["condition_abnormal"].(bool),
+					Message:  vol["condition_msg"].(string),
+				},
+			},
+		})
+	}
+
+	nextStartingToken := startingToken + maxEntries
+
+	return &csi.ListVolumesResponse{
+		Entries:   entries,
+		NextToken: strconv.FormatInt(int64(nextStartingToken), 10),
+	}, nil
+}
 
 func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ControllerGetVolume volume ID missing in request")
+	}
+
+	vol, err := cs.vh.GetVolumeWithDetail(volumeID)
+
+	if err != nil {
+		errstr := fmt.Sprintf("ControllerGetVolume error while getting volume detail: %v", err.Error())
+		klog.Errorf(errstr)
+		return nil, status.Error(codes.Internal, errstr)
+	}
+
+	if vol == nil {
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("ControllerGetVolume volume %s not found", volumeID))
+	}
+
+	return &csi.ControllerGetVolumeResponse{
+		Volume: &csi.Volume{
+			VolumeId:      vol["volumeId"].(string),
+			CapacityBytes: vol["capacity"].(int64),
+			VolumeContext: vol["parameters"].(map[string]string),
+		},
+		Status: &csi.ControllerGetVolumeResponse_VolumeStatus{
+			PublishedNodeIds: vol["published_node_ids"].([]string),
+			VolumeCondition: &csi.VolumeCondition{
+				Abnormal: vol["condition_abnormal"].(bool),
+				Message:  vol["condition_msg"].(string),
+			},
+		},
+	}, nil
 }
+
+/* Unimplemented methods beyond */
 
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
@@ -404,10 +488,6 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 }
 
 func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 

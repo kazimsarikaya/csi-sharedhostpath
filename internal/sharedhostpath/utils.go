@@ -37,6 +37,11 @@ const (
 	GiB          = 1 << 30
 )
 
+type volumeStatistics struct {
+	availableBytes, totalBytes, usedBytes    int64
+	availableInodes, totalInodes, usedInodes int64
+}
+
 type VolumeHelper struct {
 	vols_path string
 	syms_path string
@@ -64,6 +69,16 @@ type NodeInfo struct {
 	LastSeen time.Time `sql:"DEFAULT:current_timestamp"`
 }
 
+type ControllerPublishVolumeInfo struct {
+	StorageID int64 `gorm:"autoIncrement"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+	VolID     string         `gorm:"index; not null"`
+	NodeID    string         `gorm:"index; not null"`
+	ReadOnly  bool
+}
+
 type NodePublishVolumeInfo struct {
 	StorageID int64 `gorm:"autoIncrement"`
 	CreatedAt time.Time
@@ -71,6 +86,8 @@ type NodePublishVolumeInfo struct {
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 	VolID     string         `gorm:"index; not null"`
 	NodeID    string         `gorm:"index; not null"`
+	MountPath string
+	RawMount  bool
 	ReadOnly  bool
 }
 
@@ -98,7 +115,7 @@ func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 	sqlDB, err := db.DB()
 	sqlDB.SetMaxOpenConns(5)
 
-	err = db.AutoMigrate(&Volume{}, &NodeInfo{}, &NodePublishVolumeInfo{})
+	err = db.AutoMigrate(&Volume{}, &NodeInfo{}, &ControllerPublishVolumeInfo{}, &NodePublishVolumeInfo{})
 
 	if err != nil {
 		klog.Errorf("cannot create db schema on dsn %s %v", dsn, err)
@@ -254,6 +271,126 @@ func (vh *VolumeHelper) UpdateVolumeCapacity(vol *Volume, capacity int64) error 
 	}
 
 	return err
+}
+
+func (vh *VolumeHelper) GetVolumeWithDetail(volid string) (map[string]interface{}, error) {
+	var vol Volume
+	var err error
+
+	result := vh.db.Where("vol_id = ?", volid).First(&vol)
+	err = result.Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		} else {
+			klog.Errorf("cannot get volume list from db: %v", err)
+			return nil, err
+		}
+	}
+
+	vol_detail := make(map[string]interface{})
+
+	var node_ids []string
+	var cpvis []ControllerPublishVolumeInfo
+	result = vh.db.Where("vol_id = ?", vol.VolID).Find(&cpvis)
+	err = result.Error
+	if err != nil {
+		klog.Errorf("cannot get volume published node list from db: %v", err)
+		return nil, err
+	} else {
+		for _, cpvi := range cpvis {
+			node_ids = append(node_ids, cpvi.NodeID)
+		}
+	}
+
+	vol_detail["published_node_ids"] = node_ids
+	params := make(map[string]string)
+	params[pvNameKey] = vol.PVName
+	params[pvcNameKey] = vol.PVCName
+	params[pvcNamespaceKey] = vol.NSName
+	params[typeParameter] = "folder"
+	if vol.IsBlock {
+		params[typeParameter] = "disk"
+	}
+	vol_detail["parameters"] = params
+	vol_detail["capacity"] = vol.Capacity
+
+	vol_detail["condition_abnormal"] = true
+	var fi os.FileInfo
+	fi, err = os.Stat(vol.VolPath)
+	if err != nil {
+		vol_detail["condition_msg"] = err.Error()
+	} else {
+		if vol.IsBlock && fi.Size() != vol.Capacity {
+			vol_detail["condition_msg"] = "file size dismatch"
+		} else {
+			vol_detail["condition_msg"] = "ok"
+			vol_detail["condition_abnormal"] = false
+		}
+	}
+	vol_detail["volumeId"] = vol.VolID
+
+	return vol_detail, nil
+}
+
+func (vh *VolumeHelper) GetVolumesWithDetail(offset, limit int) ([]map[string]interface{}, error) {
+	var vols []Volume
+	var err error
+	vh.db.Offset(offset).Limit(limit).Find(&vols)
+	err = vh.db.Error
+	if err != nil {
+		klog.Errorf("cannot get volume list from db: %v", err)
+		return nil, err
+	}
+	var vol_list []map[string]interface{}
+
+	for _, vol := range vols {
+		vol_detail := make(map[string]interface{})
+
+		var node_ids []string
+		var cpvis []ControllerPublishVolumeInfo
+		vh.db.Where("vol_id = ?", vol.VolID).Find(&cpvis)
+		err = vh.db.Error
+		if err != nil {
+			klog.Errorf("cannot get volume published node list from db: %v", err)
+			return nil, err
+		} else {
+			for _, cpvi := range cpvis {
+				node_ids = append(node_ids, cpvi.NodeID)
+			}
+		}
+
+		vol_detail["published_node_ids"] = node_ids
+		params := make(map[string]string)
+		params[pvNameKey] = vol.PVName
+		params[pvcNameKey] = vol.PVCName
+		params[pvcNamespaceKey] = vol.NSName
+		params[typeParameter] = "folder"
+		if vol.IsBlock {
+			params[typeParameter] = "disk"
+		}
+		vol_detail["parameters"] = params
+		vol_detail["capacity"] = vol.Capacity
+
+		vol_detail["condition_abnormal"] = true
+		var fi os.FileInfo
+		fi, err := os.Stat(vol.VolPath)
+		if err != nil {
+			vol_detail["condition_msg"] = err.Error()
+		} else {
+			if vol.IsBlock && fi.Size() != vol.Capacity {
+				vol_detail["condition_msg"] = "file size dismatch"
+			} else {
+				vol_detail["condition_msg"] = "ok"
+				vol_detail["condition_abnormal"] = false
+			}
+		}
+		vol_detail["volumeId"] = vol.VolID
+
+		vol_list = append(vol_list, vol_detail)
+	}
+
+	return vol_list, nil
 }
 
 func (vh *VolumeHelper) DeleteVolume(volid string) error {
@@ -417,24 +554,44 @@ func (vh *VolumeHelper) GetNodeInfo(nodeId string, age int64) (*NodeInfo, error)
 	return &ni, result.Error
 }
 
-func (vh *VolumeHelper) CreateNodePublishVolumeInfo(volId, nodeId string, readonly bool) error {
-	npvi := NodePublishVolumeInfo{VolID: volId, NodeID: nodeId, ReadOnly: readonly}
+func (vh *VolumeHelper) CreateControllerPublishVolumeInfo(volId, nodeId string, readonly bool) error {
+	cpvi := ControllerPublishVolumeInfo{VolID: volId, NodeID: nodeId, ReadOnly: readonly}
+	err := vh.db.Create(&cpvi).Error
+	return err
+}
+
+func (vh *VolumeHelper) GetControllerPublishVolumeInfo(volId, nodeId string) (*ControllerPublishVolumeInfo, error) {
+	var cpvi ControllerPublishVolumeInfo
+	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).First(&cpvi)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, result.Error
+	}
+	return &cpvi, result.Error
+}
+
+func (vh *VolumeHelper) DeleteControllerPublishVolumeInfo(volId, nodeId string) error {
+	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).Delete(&ControllerPublishVolumeInfo{})
+	return result.Error
+}
+
+func (vh *VolumeHelper) CreateNodePublishVolumeInfo(volId, nodeId, mountPath string, rawMount, readonly bool) error {
+	npvi := NodePublishVolumeInfo{VolID: volId, NodeID: nodeId, MountPath: mountPath, RawMount: rawMount, ReadOnly: readonly}
 	err := vh.db.Create(&npvi).Error
 	return err
 }
 
-func (vh *VolumeHelper) GetNodePublishVolumeInfo(volId, nodeId string) (*NodePublishVolumeInfo, error) {
-	var npvi NodePublishVolumeInfo
-	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).First(&npvi)
+func (vh *VolumeHelper) DeleteNodePublishVolumeInfo(volId, nodeId, mountPath string) error {
+	result := vh.db.Where("vol_id = ? and node_id = ? and mount_path = ?", volId, nodeId, mountPath).Delete(&NodePublishVolumeInfo{})
+	return result.Error
+}
+
+func (vh *VolumeHelper) GetNodePublishVolumeInfo(volId, nodeId, mountPath string) (*NodePublishVolumeInfo, error) {
+	var nvpi NodePublishVolumeInfo
+	result := vh.db.Where("vol_id = ? and node_id = ? and mount_path = ?", volId, nodeId, mountPath).First(&nvpi)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, result.Error
 	}
-	return &npvi, result.Error
-}
-
-func (vh *VolumeHelper) DeleteNodePublishVolumeInfo(volId, nodeId string) error {
-	result := vh.db.Where("vol_id = ? and node_id = ?", volId, nodeId).Delete(&NodePublishVolumeInfo{})
-	return result.Error
+	return &nvpi, result.Error
 }
 
 func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
