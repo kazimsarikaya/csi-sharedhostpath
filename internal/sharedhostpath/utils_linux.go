@@ -29,10 +29,11 @@ import (
 )
 
 func getStatistics(volumePath string) (volumeStatistics, error) {
-
+	klog.V(5).Infof("getStatistics try to get volume statistics of path %s", volumePath)
 	var statfs unix.Statfs_t
 	err := unix.Statfs(volumePath, &statfs)
 	if err != nil {
+		klog.V(5).Error(err, "getStatistics cannot get volume statistics of path %s", volumePath)
 		return volumeStatistics{}, err
 	}
 
@@ -46,6 +47,7 @@ func getStatistics(volumePath string) (volumeStatistics, error) {
 		usedInodes:      int64(statfs.Files) - int64(statfs.Ffree),
 	}
 
+	klog.V(5).Infof("getStatistics volume statistics of path %s gatherred", volumePath)
 	return volStats, nil
 }
 
@@ -54,7 +56,7 @@ func getBlockDeviceSize(blockDevice string) (int64, error) {
 	output, err := executor.Command("blockdev", "--getsize64", blockDevice).CombinedOutput()
 	if err != nil {
 		errstr := fmt.Sprintf("cannot get block device size: %v", err)
-		klog.Errorf(errstr)
+		klog.V(5).Error(err, "getBlockDeviceSize cannot get block device size of %s", blockDevice)
 		return -1, errors.New(errstr)
 	}
 

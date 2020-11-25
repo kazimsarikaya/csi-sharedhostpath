@@ -95,7 +95,7 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 		csi.RegisterNodeServer(server, ns)
 	}
 
-	klog.V(5).Infof("Listening for connections on address: %#v", listener.Addr())
+	klog.V(1).Infof("Listening for connections on address: %#v", listener.Addr())
 
 	server.Serve(listener)
 
@@ -112,13 +112,13 @@ func parseEndpoint(ep string) (string, string, error) {
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	klog.V(5).Infof("GRPC call: %s", info.FullMethod)
-	klog.V(5).Infof("GRPC request: %+v", protosanitizer.StripSecrets(req))
+	klog.V(6).Infof("GRPC call: %s", info.FullMethod)
+	klog.V(6).Infof("GRPC request: %+v", protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
 		klog.Errorf("GRPC error: %v", err)
 	} else {
-		klog.V(5).Infof("GRPC response: %+v", protosanitizer.StripSecrets(resp))
+		klog.V(6).Infof("GRPC response: %+v", protosanitizer.StripSecrets(resp))
 	}
 	return resp, err
 }

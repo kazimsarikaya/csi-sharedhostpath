@@ -39,7 +39,7 @@ func NewIdentityServer(name string, isController bool, version string) *identity
 }
 
 func (ids *identityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	klog.V(5).Infof("Using default GetPluginInfo")
+	klog.V(4).Infof("Using default GetPluginInfo")
 
 	if ids.name == "" {
 		return nil, status.Error(codes.Unavailable, "Driver name not configured")
@@ -60,7 +60,7 @@ func (ids *identityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*c
 }
 
 func (ids *identityServer) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	klog.V(5).Infof("Using default capabilities")
+	klog.V(4).Infof("Using default capabilities")
 	if ids.isController {
 		return &csi.GetPluginCapabilitiesResponse{
 			Capabilities: []*csi.PluginCapability{

@@ -20,12 +20,15 @@ package sharedhostpath
 
 import (
 	"fmt"
+	klog "k8s.io/klog/v2"
 )
 
 func getStatistics(volumePath string) (volumeStatistics, error) {
+	klog.V(6).Info("getStatistics not supported for this build.")
 	return volumeStatistics{}, fmt.Errorf("getStatistics not supported for this build.")
 }
 
 func getBlockDeviceSize(blockDevice string) (int64, error) {
+	klog.V(6).Info("getBlockDeviceSize not supported for this build.")
 	return -1, fmt.Errorf("getBlockDeviceSize not supported for this build.")
 }

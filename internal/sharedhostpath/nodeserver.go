@@ -40,7 +40,7 @@ type nodeServer struct {
 func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *nodeServer {
 	err := vh.UpdateNodeInfoLastSeen(nodeId, time.Now())
 	if err != nil {
-		klog.V(5).Infof("Cannot update node info %s %v", nodeId, err.Error())
+		klog.V(4).Error(err, "Cannot update node info %s", nodeId)
 	}
 	lastSeenTicker := time.NewTicker(5 * time.Second)
 	go func() {
@@ -49,9 +49,9 @@ func NewNodeServer(nodeId string, maxVolumesPerNode int64, vh *VolumeHelper) *no
 			case t := <-lastSeenTicker.C:
 				err := vh.UpdateNodeInfoLastSeen(nodeId, t)
 				if err != nil {
-					klog.V(5).Infof("Cannot update node info %s %v", nodeId, err.Error())
+					klog.V(4).Infof("Cannot update node info %s %v", nodeId, err.Error())
 				} else {
-					klog.V(5).Infof("update node info %s", nodeId)
+					klog.V(4).Infof("update node info %s", nodeId)
 				}
 			}
 		}
@@ -133,19 +133,24 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
+	klog.V(2).Infof("NodeStageVolume volume %s will be staged to the path %s", volumeId, stagingTargetPath)
+
 	mounter := mount.New("")
 
 	if req.GetVolumeCapability().GetBlock() != nil {
+		klog.V(4).Infof("NodeStageVolume volume %s will be staged to the path %s as raw", volumeId, stagingTargetPath)
 		if !vol.IsBlock {
-			return nil, status.Error(codes.InvalidArgument, "cannot stage a non-block volume as block volume")
+			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume cannot stage a non-block volume as block volume")
 		}
 		volumePathHandler := volumehelpers.VolumePathHandler{}
 
 		// Get loop device from the volume path.
 		loopDevice, err := volumePathHandler.AttachFileDevice(vol.VolPath)
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to get the loop device: %v", err))
+			klog.V(4).Error(err, "")
+			return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to get the loop device: %v", err))
 		}
+		klog.V(4).Infof("NodeStageVolume volume %s attached to the device %s", volumeId, loopDevice)
 
 		// Check if the target path exists. Create if not present.
 		_, err = os.Lstat(stagingTargetPath)
@@ -153,42 +158,48 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			var f *os.File
 			f, err = os.OpenFile(stagingTargetPath, os.O_CREATE, 0640)
 			if err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("failed to create target path: %s: %v", stagingTargetPath, err))
+				klog.V(4).Error(err, "NodeStageVolume failed to create target path %s for volume %s", stagingTargetPath, volumeId)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to create target path: %s: %v", stagingTargetPath, err))
 			}
 			if err := f.Close(); err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("failed to create target path: %s: %v", stagingTargetPath, err))
+				klog.V(4).Error(err, "NodeStageVolume failed to create target path %s for volume %s", stagingTargetPath, volumeId)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to create target path: %s: %v", stagingTargetPath, err))
 			}
 		}
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check if the target block file exists: %v", err)
+			klog.V(4).Error(err, "NodeStageVolume failed to check if the target block file %s exists for volume %s", stagingTargetPath, volumeId)
+			return nil, status.Errorf(codes.Internal, "NodeStageVolume failed to check if the target block file exists: %v", err)
 		}
 
 		// Check if the target path is already mounted. Prevent remounting.
 		notMount, err := mount.IsNotMountPoint(mounter, stagingTargetPath)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				return nil, status.Errorf(codes.Internal, "error checking path %s for mount: %s", stagingTargetPath, err)
+				klog.V(4).Error(err, "NodeStageVolume failed to check mount status of path %s for volume %s", stagingTargetPath, volumeId)
+				return nil, status.Errorf(codes.Internal, "NodeStageVolume error checking path %s for mount: %s", stagingTargetPath, err)
 			}
 			notMount = true
 		}
 		if notMount {
 			options := []string{"bind"}
 			if err := mounter.Mount(loopDevice, stagingTargetPath, "", options); err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount block device: %s at %s: %v", loopDevice, stagingTargetPath, err))
+				klog.V(4).Error(err, "NodeStageVolume failed to mount loop device %s to the staging target %s for volume %s", loopDevice, stagingTargetPath, volumeId)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to mount block device: %s at %s: %v", loopDevice, stagingTargetPath, err))
 			}
 		}
+		klog.V(4).Infof("NodeStageVolume volume %s staged to the path %s from loop device %s as raw", volumeId, stagingTargetPath, loopDevice)
 	} else if req.GetVolumeCapability().GetMount() != nil {
 		volume_context := req.GetVolumeContext()
 		var vtype string
 		var found bool
 		if vtype, found = volume_context[typeParameter]; !found {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("required parameter not found: %s", typeParameter))
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodeStageVolume required parameter not found: %s", typeParameter))
 		}
 		if vtype == "disk" && !vol.IsBlock {
-			return nil, status.Error(codes.InvalidArgument, "cannot stage a non-block volume as disk volume")
+			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume cannot stage a non-block volume as disk volume")
 		}
 		if vtype == "folder" && vol.IsBlock {
-			return nil, status.Error(codes.InvalidArgument, "cannot stage a block volume as folder volume")
+			return nil, status.Error(codes.InvalidArgument, "NodeStageVolume cannot stage a block volume as folder volume")
 		}
 
 		notMnt, err := mount.IsNotMountPoint(mounter, stagingTargetPath)
@@ -209,12 +220,12 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			if vtype == "folder" {
 				options = append(options, "bind")
 				if err := mounter.Mount(vol.VolPath, stagingTargetPath, "", options); err != nil {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount device: %s at %s: %s", vol.VolPath, stagingTargetPath, err.Error()))
+					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to mount device: %s at %s: %s", vol.VolPath, stagingTargetPath, err.Error()))
 				}
 			} else if vtype == "disk" {
 				var fsType string
 				if fsType, found = volume_context[fstypeParameter]; !found {
-					return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("required parameter not found: %s", fstypeParameter))
+					return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodeStageVolume required parameter not found: %s", fstypeParameter))
 				}
 				if fsType == "xfs" {
 					options = append(options, "nouuid")
@@ -222,19 +233,21 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 				volumePathHandler := volumehelpers.NewBlockVolumePathHandler()
 				loopDevice, err := volumePathHandler.AttachFileDevice(vol.VolPath)
 				if err != nil {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("cannot create loop device: %s", err.Error()))
+					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume cannot create loop device: %s", err.Error()))
 				}
 				formatAndMount := mount.SafeFormatAndMount{Interface: mounter, Exec: utilexec.New()}
 				err = formatAndMount.FormatAndMount(loopDevice, stagingTargetPath, fsType, options)
 				if err != nil {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount device: %s at %s: %s", vol.VolPath, stagingTargetPath, err.Error()))
+					return nil, status.Error(codes.Internal, fmt.Sprintf("NodeStageVolume failed to mount device: %s at %s: %s", vol.VolPath, stagingTargetPath, err.Error()))
 				}
 			} else {
-				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid volume type: %s", vtype))
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("NodeStageVolume invalid volume type: %s", vtype))
 			}
 		}
 
 	}
+
+	klog.V(2).Infof("NodeStageVolume volume %s staged to the path %s", volumeId, stagingTargetPath)
 
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -255,30 +268,40 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	if notMnt, err := mount.IsNotMountPoint(mount.New(""), stagingTargetPath); err != nil {
+	klog.V(2).Infof("NodeUnstageVolume try to unmount volume %s at %s", volumeId, stagingTargetPath)
+
+	mounter := mount.New("")
+	if notMnt, err := mount.IsNotMountPoint(mounter, stagingTargetPath); err != nil {
 		if !os.IsNotExist(err) {
+			klog.V(4).Error(err, "NodeUnstageVolume an error occured at checking volume %s  mount point %s", volumeId, stagingTargetPath)
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else if !notMnt {
-		err = mount.New("").Unmount(stagingTargetPath)
+		err = mounter.Unmount(stagingTargetPath)
 		if err != nil {
+			klog.V(4).Error(err, "NodeUnstageVolume an error occured at unmounting volume %s at mount point %s: %v", volumeId, stagingTargetPath)
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
+	klog.V(4).Infof("NodeUnstageVolume unmount volume %s at %s succeeded", volumeId, stagingTargetPath)
 
 	if vol.IsBlock {
+		klog.V(4).Infof("NodeUnstageVolume try detach volume %s device %s", volumeId, vol.VolPath)
 		volumeHelpers := volumehelpers.NewBlockVolumePathHandler()
 		err := volumeHelpers.DetachFileDevice(vol.VolPath)
 		if err != nil {
+			klog.V(4).Error(err, "NodeUnstageVolume detach failed volume %s device %s", volumeId, vol.VolPath)
 			return nil, status.Error(codes.Internal, err.Error())
 		}
+		klog.V(4).Infof("NodeUnstageVolume detach volume %s device %s succeeded", volumeId, vol.VolPath)
 	}
 
+	klog.V(4).Infof("NodeUnstageVolume try to remove mount path %s for volume %s", stagingTargetPath, volumeId)
 	if err = os.RemoveAll(stagingTargetPath); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	klog.V(5).Infof("hostpath: volume %s has been unstaged.", stagingTargetPath)
+	klog.V(4).Infof("NodeUnstageVolume volume %s has been unstaged.", stagingTargetPath)
 
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -459,12 +482,12 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume ID not provided")
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID not provided")
 	}
 
 	volumePath := req.GetVolumePath()
 	if len(volumePath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "NodeExpandVolume volume path not provided")
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path not provided")
 	}
 
 	_, err := ns.vh.GetVolume(volumeID)
@@ -475,12 +498,12 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	_, err = ns.vh.GetNodePublishVolumeInfo(ns.nodeID, volumeID, volumePath)
 
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "volumePath %s is not same as volume's published mount", volumePath)
+		return nil, status.Errorf(codes.NotFound, "NodeGetVolumeStats volumePath %s is not same as volume's published mount", volumePath)
 	}
 
 	fi, err := os.Stat(volumePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "cannot stat volumepath: %s : %v", volumePath, err)
+		return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats cannot stat volumepath: %s : %v", volumePath, err)
 	}
 
 	var usage []*csi.VolumeUsage
@@ -488,7 +511,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if (fi.Mode() & os.ModeDir) == os.ModeDir {
 		stats, err := getStatistics(volumePath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to retrieve capacity statistics for volume path %q: %s", volumePath, err)
+			return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats failed to retrieve capacity statistics for volume path %q: %s", volumePath, err)
 		}
 		usage = []*csi.VolumeUsage{
 			&csi.VolumeUsage{
@@ -510,7 +533,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	} else {
 		totalBytes, err := getBlockDeviceSize(volumePath)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "cannot get devicesize: %v", err)
+			return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats cannot get devicesize: %v", err)
 		}
 		usage = []*csi.VolumeUsage{
 			&csi.VolumeUsage{

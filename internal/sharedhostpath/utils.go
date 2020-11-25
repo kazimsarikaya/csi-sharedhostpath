@@ -96,32 +96,33 @@ func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 	vols_path := filepath.Join(dataRoot, volume_base)
 	err := os.MkdirAll(vols_path, 0750)
 	if err != nil {
-		klog.Errorf("cannot create vols path: %s %v", vols_path, err)
+		klog.V(5).Error(err, "NewVolumeHelper cannot create vols path: %s", vols_path)
 		return nil, err
 	}
 
 	syms_path := filepath.Join(dataRoot, symlink_base)
 	err = os.MkdirAll(syms_path, 0750)
 	if err != nil {
-		klog.Errorf("cannot create vols path: %s %v", syms_path, err)
+		klog.V(5).Error(err, "NewVolumeHelper cannot cannot create vols path: %s", syms_path)
 		return nil, err
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		klog.Errorf("can not create db file %s %v", dsn, err)
+		klog.V(5).Error(err, "NewVolumeHelper cannot can not create db file %s", dsn)
 		return nil, err
 	}
 	sqlDB, err := db.DB()
 	sqlDB.SetMaxOpenConns(5)
+	klog.V(5).Infof("NewVolumeHelper db connection established")
 
 	err = db.AutoMigrate(&Volume{}, &NodeInfo{}, &ControllerPublishVolumeInfo{}, &NodePublishVolumeInfo{})
 
 	if err != nil {
-		klog.Errorf("cannot create db schema on dsn %s %v", dsn, err)
+		klog.V(5).Error(err, "NewVolumeHelper cannot create db schema on dsn %s", dsn)
 		return nil, err
 	}
-	klog.V(5).Info("database schema created")
+	klog.V(5).Info("NewVolumeHelper database schema created")
 
 	vh := &VolumeHelper{
 		vols_path: vols_path,
@@ -130,7 +131,7 @@ func NewVolumeHelper(dataRoot, dsn string) (*VolumeHelper, error) {
 		dsn:       dsn,
 	}
 
-	klog.V(5).Infof("volume helper is created")
+	klog.V(5).Infof("NewVolumeHelper volume helper is created")
 	return vh, nil
 }
 
@@ -142,7 +143,7 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 
 	err = os.MkdirAll(prefix, 0750)
 	if err != nil {
-		klog.Errorf("cannot create vols prefix: %s %v", prefix, err)
+		klog.V(5).Error(err, "CreateVolume cannot create vols prefix: %s", prefix)
 		return nil, err
 	}
 
@@ -150,13 +151,13 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 
 	tx := vh.db.Begin()
 	if tx == nil || vh.db.Error != nil {
-		klog.Errorf("cannot start transaction: %v", err)
+		klog.V(5).Error(err, "CreateVolume cannot start transaction")
 		return nil, vh.db.Error
 	}
 	defer func() {
 		if err := recover(); err != nil {
 			tx.Rollback()
-			klog.Errorf("an error accured while trans, rollback performed %v", err)
+			klog.V(5).Error(errors.New(fmt.Sprintf("%v", err)), "CreateVolume an error accured while trans, rollback performed")
 		}
 	}()
 
@@ -169,14 +170,15 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 
 	if result.Error != nil {
 		tx.Rollback()
-		klog.Errorf("cannot insert volume data into db: %v", result.Error)
+		klog.V(5).Error(err, "CreateVolume cannot insert volume data into db")
 		return nil, result.Error
 	}
 
 	_, err = vol.PopulateVolumeIfRequired()
 	if err != nil {
 		tx.Rollback()
-		return nil, errors.New(fmt.Sprintf("cannot populate volume: %v", err.Error()))
+		klog.V(5).Error(err, "CreateVolume cannot populate volume")
+		return nil, err
 	}
 
 	symlink_dir := filepath.Join(vh.syms_path, vol.NSName)
@@ -191,12 +193,12 @@ func (vh *VolumeHelper) CreateVolume(volid, volname, pvname, pvcname, nsname str
 	err = tx.Commit().Error
 	if err != nil {
 		tx.Rollback()
-		klog.Errorf("cannot create volume dir: %s %v", volume_path, err)
+		klog.V(5).Error(err, "CreateVolume cannot create volume dir: %s %v", volume_path)
 		os.RemoveAll(volume_path)
 		os.RemoveAll(symlink_file)
 		return nil, err
 	} else {
-		klog.V(5).Infof("volume %s created for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+		klog.V(5).Infof("CreateVolume volume %s created for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	}
 	return &vol, nil
 }
@@ -215,7 +217,7 @@ func (vh *VolumeHelper) UpdateVolumeCapacity(vol *Volume, capacity int64) error 
 	tx := vh.db.Begin()
 	err := vh.db.Error
 	if tx == nil || err != nil {
-		klog.Errorf("cannot start transaction: %v", err)
+		klog.V(5).Error(err, "UpdateVolumeCapacity cannot start transaction")
 		return vh.db.Error
 	}
 
@@ -233,16 +235,18 @@ func (vh *VolumeHelper) UpdateVolumeCapacity(vol *Volume, capacity int64) error 
 
 		if err != nil {
 			tx.Rollback()
-			errstr := fmt.Sprintf("rollback: expanding volume error: cannot stat file: %s : %v", volume_path, err)
-			klog.Errorf(errstr)
-			return errors.New(errstr)
+			errstr := fmt.Sprintf("UpdateVolumeCapacity rollback: expanding volume error: cannot stat file: %s : %v", volume_path, err)
+			err = errors.New(errstr)
+			klog.V(5).Error(err, "UpdateVolumeCapacity error occured")
+			return err
 		}
 
 		if fi.Size() != oldCapacity {
 			tx.Rollback()
-			errstr := fmt.Sprintf("rollback: expanding volume error: file size dismatch: db-> %v os-> %v", oldCapacity, fi.Size())
-			klog.Errorf(errstr)
-			return errors.New(errstr)
+			errstr := fmt.Sprintf("UpdateVolumeCapacity rollback: expanding volume error: file size dismatch: db-> %v os-> %v", oldCapacity, fi.Size())
+			err = errors.New(errstr)
+			klog.V(5).Error(err, "UpdateVolumeCapacity error occured")
+			return err
 		}
 
 		executor := utilexec.New()
@@ -252,22 +256,23 @@ func (vh *VolumeHelper) UpdateVolumeCapacity(vol *Volume, capacity int64) error 
 		output, err = executor.Command("dd", "if=/dev/null", "bs=1", "count=0", cap_str, vp_str).CombinedOutput()
 		if err != nil {
 			tx.Rollback()
-			errstr := fmt.Sprintf("cannot expand volume file: %s %v %s", vol.VolPath, err.Error(), string(output))
-			klog.Errorf(errstr)
-			return errors.New(errstr)
+			errstr := fmt.Sprintf("UpdateVolumeCapacity cannot expand volume file: %s %v %s", vol.VolPath, err.Error(), string(output))
+			err = errors.New(errstr)
+			klog.V(5).Error(err, "UpdateVolumeCapacity error occured")
+			return err
 		}
 
 	}
 
 	if err != nil {
-		klog.Errorf("there is an error while expanding volume: %v, tran will be rollbacked", err)
+		klog.V(5).Error(err, "UpdateVolumeCapacity there is an error while expanding volume, tran will be rollbacked")
 		tx.Rollback()
-		klog.Errorf("volume %s cannot be expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+		klog.V(5).Error(err, "UpdateVolumeCapacity volume %s cannot be expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	} else {
 		err = tx.Commit().Error
 	}
 	if err == nil {
-		klog.V(5).Infof("volume %s expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+		klog.V(5).Infof("UpdateVolumeCapacity volume %s expanded for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	}
 
 	return err
@@ -277,13 +282,15 @@ func (vh *VolumeHelper) GetVolumeWithDetail(volid string) (map[string]interface{
 	var vol Volume
 	var err error
 
+	klog.V(5).Infof("GetVolumeWithDetail volume details will be obtained for %s", volid)
+
 	result := vh.db.Where("vol_id = ?", volid).First(&vol)
 	err = result.Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		} else {
-			klog.Errorf("cannot get volume list from db: %v", err)
+			klog.V(5).Error(err, "GetVolumeWithDetail cannot get volume list from db")
 			return nil, err
 		}
 	}
@@ -295,7 +302,7 @@ func (vh *VolumeHelper) GetVolumeWithDetail(volid string) (map[string]interface{
 	result = vh.db.Where("vol_id = ?", vol.VolID).Find(&cpvis)
 	err = result.Error
 	if err != nil {
-		klog.Errorf("cannot get volume published node list from db: %v", err)
+		klog.V(5).Error(err, "GetVolumeWithDetail cannot get volume published node list from db")
 		return nil, err
 	} else {
 		for _, cpvi := range cpvis {
@@ -330,16 +337,18 @@ func (vh *VolumeHelper) GetVolumeWithDetail(volid string) (map[string]interface{
 	}
 	vol_detail["volumeId"] = vol.VolID
 
+	klog.V(5).Infof("GetVolumeWithDetail volume detail obtained for %s", volid)
 	return vol_detail, nil
 }
 
 func (vh *VolumeHelper) GetVolumesWithDetail(offset, limit int) ([]map[string]interface{}, error) {
 	var vols []Volume
 	var err error
+	klog.V(5).Infof("GetVolumesWithDetail volume details will be obtained from %v to %v", offset, limit)
 	vh.db.Offset(offset).Limit(limit).Find(&vols)
 	err = vh.db.Error
 	if err != nil {
-		klog.Errorf("cannot get volume list from db: %v", err)
+		klog.V(5).Error(err, "GetVolumesWithDetail cannot get volume list from db")
 		return nil, err
 	}
 	var vol_list []map[string]interface{}
@@ -352,7 +361,7 @@ func (vh *VolumeHelper) GetVolumesWithDetail(offset, limit int) ([]map[string]in
 		vh.db.Where("vol_id = ?", vol.VolID).Find(&cpvis)
 		err = vh.db.Error
 		if err != nil {
-			klog.Errorf("cannot get volume published node list from db: %v", err)
+			klog.V(5).Error(err, "cannot get volume published node list from db")
 			return nil, err
 		} else {
 			for _, cpvi := range cpvis {
@@ -390,13 +399,15 @@ func (vh *VolumeHelper) GetVolumesWithDetail(offset, limit int) ([]map[string]in
 		vol_list = append(vol_list, vol_detail)
 	}
 
+	klog.V(5).Infof("GetVolumesWithDetail volume details obtained from %v to %v", offset, limit)
 	return vol_list, nil
 }
 
 func (vh *VolumeHelper) DeleteVolume(volid string) error {
+	klog.V(5).Infof("DeleteVolume try to delete volume %s", volid)
 	vol, err := vh.GetVolume(volid)
 	if err != nil {
-		klog.Errorf("cannot get volume %s: %v", volid, err)
+		klog.V(5).Error(err, "DeleteVolume cannot get volume %s", volid)
 		return err
 	}
 
@@ -404,13 +415,13 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 
 	tx := vh.db.Begin()
 	if tx == nil || vh.db.Error != nil {
-		klog.Errorf("cannot start transaction: %v", err)
+		klog.V(5).Error(err, "DeleteVolume cannot start transaction")
 		return vh.db.Error
 	}
 	defer func() {
 		if err := recover(); err != nil {
 			tx.Rollback()
-			klog.Errorf("an error accured while trans, rollback performed %v", err)
+			klog.V(5).Error(errors.New(fmt.Sprintf("%v", err)), "DeleteVolume an error accured while trans, rollback performed")
 		}
 	}()
 
@@ -423,14 +434,13 @@ func (vh *VolumeHelper) DeleteVolume(volid string) error {
 	err = os.RemoveAll(volume_path)
 
 	if err != nil {
-		klog.Errorf("there is an error while deleting volume: %v, tran will be rollbacked", err)
 		tx.Rollback()
-		klog.Errorf("volume %s cannot be deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+		klog.V(5).Error(err, "DeleteVolume  volume %s cannot be deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	} else {
 		err = tx.Commit().Error
 	}
 	if err == nil {
-		klog.V(5).Infof("volume %s deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
+		klog.V(5).Infof("DeleteVolume volume %s deleted for %s/%s", vol.VolID, vol.NSName, vol.PVCName)
 	}
 
 	return err
@@ -447,22 +457,23 @@ func (vh *VolumeHelper) GetVolumeIdByName(volname string) (string, error) {
 
 func (vh *VolumeHelper) ReBuildSymLinks() error {
 	var vols []Volume
+	klog.V(5).Infof("ReBuildSymLinks started")
 
 	err := os.RemoveAll(vh.syms_path)
 	if err != nil {
-		klog.Errorf("cannot remove syms folder: %v", err)
+		klog.V(5).Error(err, "ReBuildSymLinkscannot remove syms folder")
 		return err
 	}
 	err = os.MkdirAll(vh.syms_path, 0750)
 	if err != nil {
-		klog.Errorf("cannot recreate syms folder: %v", err)
+		klog.V(5).Error(err, "ReBuildSymLinkscannot recreate syms folder")
 		return err
 	}
 
 	result := vh.db.Find(&vols)
 
 	if result.Error != nil {
-		klog.Errorf("cannot get volumes from db: %v", err)
+		klog.V(5).Error(err, "ReBuildSymLinkscannot get volumes from db")
 		return err
 	}
 
@@ -477,17 +488,20 @@ func (vh *VolumeHelper) ReBuildSymLinks() error {
 		}
 	}
 	if err == nil {
-		klog.V(5).Infof("all symlinks rebuilded")
+		klog.V(5).Infof("ReBuildSymLinks all symlinks rebuilded")
 	}
+
+	klog.V(5).Infof("ReBuildSymLinks started")
 	return err
 }
 
 func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 	var vols []Volume
+	klog.Infof("CleanUpDanglingVolumes started")
 	vh.db.Unscoped().Where("deleted_at is not null").Find(&vols)
 	err := vh.db.Error
 	if err != nil {
-		klog.Errorf("cannot get deleted volumes from db: %v", err)
+		klog.V(5).Error(err, "CleanUpDanglingVolumes cannot get deleted volumes from db")
 		return err
 	}
 
@@ -497,7 +511,7 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 		if _, err := os.Stat(volume_path); err == nil {
 			err = os.RemoveAll(volume_path)
 			if err != nil {
-				klog.Errorf("cannot deleted volumes from disk: %v", err)
+				klog.V(5).Error(err, "CleanUpDanglingVolumes cannot deleted volumes from disk")
 			}
 		}
 	}
@@ -506,7 +520,7 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 	pattern := fmt.Sprintf("%s/*/*/*/*", vh.vols_path)
 	fs, err := filepath.Glob(pattern)
 	if err != nil {
-		klog.Errorf("cannot read volumes (volid) from disk: %v", err)
+		klog.V(5).Error(err, "CleanUpDanglingVolumes cannot read volumes (volid) from disk")
 		return err
 	}
 	for _, f := range fs {
@@ -515,13 +529,13 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 		if result.RowsAffected == 0 {
 			err = os.RemoveAll(f)
 			if err != nil {
-				klog.Errorf("cannot deleted volumes from disk: %v", err)
+				klog.V(5).Error(err, "CleanUpDanglingVolumes cannot deleted volumes from disk")
 			}
 		}
 	}
 
 	if err == nil {
-		klog.V(5).Infof("all dangling volumes are deleted")
+		klog.V(5).Infof("CleanUpDanglingVolumes all dangling volumes are deleted")
 	}
 	// Phase3 rebuild links
 	return vh.ReBuildSymLinks()
@@ -530,7 +544,8 @@ func (vh *VolumeHelper) CleanUpDanglingVolumes() error {
 func (vh *VolumeHelper) Close() error {
 	sqlDB, err := vh.db.DB()
 	if err != nil {
-		return errors.New(fmt.Sprintf("cannot get sql db object: %v", err.Error()))
+		klog.V(5).Error(err, "Close error occured")
+		return err
 	}
 	sqlDB.Close()
 	return nil
@@ -596,6 +611,7 @@ func (vh *VolumeHelper) GetNodePublishVolumeInfo(volId, nodeId, mountPath string
 
 func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 	var err error
+	klog.Infof("PopulateVolumeIfRequired started")
 	_, err = os.Lstat(vol.VolPath)
 	if os.IsNotExist(err) {
 		if vol.IsBlock {
@@ -605,22 +621,25 @@ func (vol *Volume) PopulateVolumeIfRequired() (bool, error) {
 			var output []byte
 			output, err = executor.Command("dd", "if=/dev/null", "bs=1", "count=0", cap_str, vp_str).CombinedOutput()
 			if err != nil {
-				return false, errors.New(fmt.Sprintf("cannot create volume file: %s %v %s", vol.VolPath, err.Error(), string(output)))
+				klog.V(5).Error(err, "PopulateVolumeIfRequired error occured %v", string(output))
+				return false, err
 			}
 		} else {
 			err := os.MkdirAll(vol.VolPath, 0750)
 			if err != nil {
-				return false, errors.New(fmt.Sprintf("cannot create volume dir: %s %v", vol.VolPath, err.Error()))
+				klog.V(5).Error(err, "PopulateVolumeIfRequired error occured")
+				return false, err
 			}
 		}
-		klog.V(5).Infof("volume needs populating: %s with path: %s", vol.VolID, vol.VolPath)
+		klog.V(5).Infof("PopulateVolumeIfRequired volume needs populating: %s with path: %s", vol.VolID, vol.VolPath)
 		return true, nil
 	} else {
 		if err == nil {
-			klog.V(5).Infof("volume donot need populating: %s with path: %s", vol.VolID, vol.VolPath)
+			klog.V(5).Infof("PopulateVolumeIfRequired volume don not need populating: %s with path: %s", vol.VolID, vol.VolPath)
 			return false, nil
 		}
-		return false, errors.New(fmt.Sprintf("cannot stat volume data: %v", err.Error()))
+		klog.V(5).Error(err, "PopulateVolumeIfRequired error occured")
+		return false, err
 	}
 	return false, nil
 }

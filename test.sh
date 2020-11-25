@@ -25,7 +25,7 @@ if [ "x$1" == "xrun" ]; then
   done
   for tf in $(find . -type f -name "*.test");
   do
-    ./$tf -test.coverprofile tmp/cover.out -dataroot "./tmp/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=$TARGET_HOST sslmode=disable" -ginkgo.v 9 ||exit 1
+    ./$tf -test.coverprofile tmp/cover.out -dataroot "./tmp/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=$TARGET_HOST sslmode=disable" -ginkgo.v -test.v -v ${VERBOSE:-5} ||exit 1
     go tool cover -html tmp/cover.out -o tmp/cover.html
   done
   docker stop testdb

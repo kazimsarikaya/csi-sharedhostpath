@@ -27,7 +27,7 @@ if [ "x$1" != "xhelper" ]; then
     while ! nc -z $TARGET_HOST 5432; do
       sleep 0.5 # wait for 1/2 of the second before check again
     done
-    docker run --name csi_tester -ti --rm --privileged kazimsarikaya/csi-sharedhostpath:test-$REV -test.coverprofile /dev/stdout -dataroot "/csi-data-dir/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=$TARGET_HOST sslmode=disable" -ginkgo.v 9 -v 9 -test.v 9 |tee tmp/docker-run.out ||exit 1
+    docker run --name csi_tester -ti --rm --privileged kazimsarikaya/csi-sharedhostpath:test-$REV -test.coverprofile /dev/stdout -dataroot "/csi-data-dir/" -dsn "user=sharedhostpath password=sharedhostpath dbname=sharedhostpath port=5432 host=$TARGET_HOST sslmode=disable" -ginkgo.v -test.v -v ${VERBOSE:-5} |tee tmp/docker-run.out ||exit 1
     docker rmi kazimsarikaya/csi-sharedhostpath:test-$REV
     docker stop testdb
     cov_start=$(grep -n "mode: set" tmp/docker-run.out |cut -d: -f1)
