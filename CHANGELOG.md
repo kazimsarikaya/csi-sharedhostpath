@@ -1,3 +1,22 @@
+## v1.0.0 (2020-11-25)
+
+*  node stage/unstage impl from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/eda434063435698efdc71db10161d5d6cadbdd74)
+*  auto changelog from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/bc816338cdd64b1aa34b76a85ec24cf092ca9264)
+*  fix profile url from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/51b2f88d21acf980f08607362791e1249f469d07)
+*  decond try to fix it :) from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/2d7a18e2e33094992a6a155157bb491e45411909)
+*  add license from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/ae5d117b7e2111f0644cad6c61e55ac20aac544c)
+*  fix build at linux and improve build/test process from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/129030486135fd17b62c170fbc83345c8f029ac8)
+*  expand volume support from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/31ba2a14430934e2c53ac34f94463d50f79c9858)
+*  add comments to the .dcokerignore from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/81e1020d9a77780cedb075db4cd68e685afd2466)
+*  wait db port Wait db docker's port is opened after successfull build from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/e27f6504b6b94e9091134ca78524d6029e843213)
+*  fix syntax fix scripts syntax from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/95fc3313ad31ad7569e8d33c86b70b65e9f3107b)
+*  Several operations from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/1f9ce65d2e365960d27e257b824f8bae2009c471)
+*  add cover and improve running time from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/1f5bc046b7db2d3e9032225e59167a88ef078607)
+*  coverage report from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/58673b178c1d08a9321a0e62c2879fad5e26e019)
+*  implement supported methods from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/1321a6db13079502a50317766b1099560526920c)
+*  logging improved and realese from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/cc776b4bf8b0de4f37361e7a6a3889f1cecb3899)
+
+
 ## v0.1.2 (2020-11-22)
 
 *  fix .dockerignore from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/bcdc8b4b0d381d0639280a1a314f09a8a2ca21ad)
