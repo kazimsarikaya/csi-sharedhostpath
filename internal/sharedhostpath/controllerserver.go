@@ -436,11 +436,28 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 		})
 	}
 
-	nextStartingToken := startingToken + maxEntries
+	nextStartingToken := -1
+	vc, err := cs.vh.GetVolumeCount()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("ListVolumes cannot get volume count from db: %v", err.Error()))
+	}
 
+	if maxEntries != math.MaxInt32 {
+		nextStartingToken = startingToken + maxEntries
+		if nextStartingToken >= vc {
+			nextStartingToken = -1
+		}
+	}
+
+	if nextStartingToken != -1 {
+
+		return &csi.ListVolumesResponse{
+			Entries:   entries,
+			NextToken: strconv.FormatInt(int64(nextStartingToken), 10),
+		}, nil
+	}
 	return &csi.ListVolumesResponse{
-		Entries:   entries,
-		NextToken: strconv.FormatInt(int64(nextStartingToken), 10),
+		Entries: entries,
 	}, nil
 }
 

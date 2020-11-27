@@ -341,6 +341,19 @@ func (vh *VolumeHelper) GetVolumeWithDetail(volid string) (map[string]interface{
 	return vol_detail, nil
 }
 
+func (vh *VolumeHelper) GetVolumeCount() (int, error) {
+	var vols []Volume
+	vh.db.Select("vol_id").Find(&vols)
+	err := vh.db.Error
+	if err != nil {
+		klog.V(5).Error(err, "GetVolumeCount cannot get volume count from db")
+		return 0, err
+	}
+	vc := len(vols)
+	klog.V(5).Infof("GetVolumeCount volume count: %d", vc)
+	return vc, nil
+}
+
 func (vh *VolumeHelper) GetVolumesWithDetail(offset, limit int) ([]map[string]interface{}, error) {
 	var vols []Volume
 	var err error
