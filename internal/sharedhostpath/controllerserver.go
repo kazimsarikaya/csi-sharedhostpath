@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	klog "k8s.io/klog/v2"
+	"math"
 	"strconv"
 )
 
@@ -407,7 +408,7 @@ func (cs *controllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 
 	maxEntries := int(req.MaxEntries)
 	if maxEntries == 0 {
-		maxEntries = ^int(0)
+		maxEntries = math.MaxInt32
 	}
 
 	vols, err := cs.vh.GetVolumesWithDetail(startingToken, maxEntries)
