@@ -364,6 +364,11 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if err := mounter.Mount(stagingTargetPath, targetPath, "", options); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount block device: %s at %s: %v", stagingTargetPath, targetPath, err))
 		}
+
+		if err := os.Chmod(targetPath, 0777); err != nil { // TODO: security problem?
+			klog.V(5).Error(err, "cannot change folder permissions")
+			return nil, status.Error(codes.Internal, fmt.Sprintf("failed to mount block device: %s at %s: %v", stagingTargetPath, targetPath, err))
+		}
 	}
 
 	err = ns.vh.CreateNodePublishVolumeInfo(ns.nodeID, volumeID, targetPath, rawMount, readOnly)
