@@ -1,3 +1,20 @@
+## v1.0.3 (2020-11-29)
+
+*  improve logging on node server from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/90173d4b421215143645dcc25ad5cda009897ca6)
+
+
+## v1.0.2 (2020-11-27)
+
+*  fix getvolumelist overflow bug from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/53d805f937daeb326194b7e7ddba8ee18b0ee19b)
+*  dont send nextStartingToken if no vol left from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/e480d43f054c2762a73a7b2bc8605b24524e3738)
+
+
+## v1.0.1 (2020-11-27)
+
+*  change log updated from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/da947d1389891dfb8c8fdc03a3c6c92cc91a7d94)
+*  publish volume mount folder permissions from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/b66299ead7c4fac2c21f6443e5ece74d5a9c3d7b)
+
+
 ## v1.0.0 (2020-11-25)
 
 *  node stage/unstage impl from [Kazım SARIKAYA](https://github.com/kazimsarikaya) [View](https://github.com/kazimsarikaya/csi-sharedhostpath/commit/eda434063435698efdc71db10161d5d6cadbdd74)
