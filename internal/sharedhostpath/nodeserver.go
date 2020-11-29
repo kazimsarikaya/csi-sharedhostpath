@@ -381,7 +381,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	klog.V(5).Infof("NodePublishVolume create npvi for volume %s on node %s", volumeID, ns.nodeID)
-	err = ns.vh.CreateNodePublishVolumeInfo(ns.nodeID, volumeID, targetPath, rawMount, readOnly)
+	err = ns.vh.CreateNodePublishVolumeInfo(volumeID, ns.nodeID, targetPath, rawMount, readOnly)
 	if err != nil { // TODO: how to be impodent
 		klog.V(5).Error(err, fmt.Sprintf("NodePublishVolume cannot create npvi for volume %s on node %s, cleanup", volumeID, ns.nodeID))
 		mount.New("").Unmount(targetPath)
@@ -428,7 +428,7 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	err = ns.vh.DeleteNodePublishVolumeInfo(ns.nodeID, volumeID, targetPath)
+	err = ns.vh.DeleteNodePublishVolumeInfo(volumeID, ns.nodeID, targetPath)
 	if err != nil {
 		klog.Errorf("NodeUnpublishVolume cannot delete node %s publish volume %s info at path %s: %v", ns.nodeID, volumeID, targetPath, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -518,19 +518,24 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path not provided")
 	}
 
+	klog.V(5).Infof("NodeGetVolumeStats try to get stats for volume %s on path %s at node %s", volumeID, volumePath, ns.nodeID)
+
 	_, err := ns.vh.GetVolume(volumeID)
 	if err != nil {
+		klog.V(5).Error(err, fmt.Sprintf("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID))
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	_, err = ns.vh.GetNodePublishVolumeInfo(ns.nodeID, volumeID, volumePath)
+	_, err = ns.vh.GetNodePublishVolumeInfo(volumeID, ns.nodeID, volumePath)
 
 	if err != nil {
+		klog.V(5).Error(err, fmt.Sprintf("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID))
 		return nil, status.Errorf(codes.NotFound, "NodeGetVolumeStats volumePath %s is not same as volume's published mount", volumePath)
 	}
 
 	fi, err := os.Stat(volumePath)
 	if err != nil {
+		klog.V(5).Error(err, fmt.Sprintf("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID))
 		return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats cannot stat volumepath: %s : %v", volumePath, err)
 	}
 
@@ -539,6 +544,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if (fi.Mode() & os.ModeDir) == os.ModeDir {
 		stats, err := getStatistics(volumePath)
 		if err != nil {
+			klog.V(5).Error(err, fmt.Sprintf("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID))
 			return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats failed to retrieve capacity statistics for volume path %q: %s", volumePath, err)
 		}
 		usage = []*csi.VolumeUsage{
@@ -561,6 +567,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	} else {
 		totalBytes, err := getBlockDeviceSize(volumePath)
 		if err != nil {
+			klog.V(5).Error(err, fmt.Sprintf("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID))
 			return nil, status.Errorf(codes.Internal, "NodeGetVolumeStats cannot get devicesize: %v", err)
 		}
 		usage = []*csi.VolumeUsage{
@@ -573,7 +580,7 @@ func (ns *nodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		condition.Abnormal = false
 		condition.Message = "ok"
 	}
-
+	klog.V(5).Infof("NodeGetVolumeStats get stats for volume %s on path %s at node %s failed", volumeID, volumePath, ns.nodeID)
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage:           usage,
 		VolumeCondition: condition,
