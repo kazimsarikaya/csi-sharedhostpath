@@ -21,6 +21,7 @@ bootstrap:
   pg_hba:
   - host all all 0.0.0.0/0 md5
   - host replication ${PATRONI_REPLICATION_USERNAME} 0.0.0.0/0 md5
+  post_init: /home/postgres/post_init.sh
 restapi:
   connect_address: '${PATRONI_KUBERNETES_POD_IP}:8008'
 postgresql:
