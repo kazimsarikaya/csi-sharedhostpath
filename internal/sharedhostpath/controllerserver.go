@@ -26,12 +26,14 @@ import (
 	klog "k8s.io/klog/v2"
 	"math"
 	"strconv"
+	"sync"
 )
 
 type controllerServer struct {
 	caps   []*csi.ControllerServiceCapability
 	nodeID string
 	vh     *VolumeHelper
+	mutex  sync.Mutex
 }
 
 const (
@@ -121,6 +123,8 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 }
 
 func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
 
 	if len(req.GetName()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
@@ -247,6 +251,9 @@ func (cs *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	if len(req.GetVolumeId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
@@ -272,6 +279,9 @@ func (cs *controllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 }
 
 func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	if req.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume ID must be provided")
 	}
@@ -329,6 +339,9 @@ func (cs *controllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 }
 
 func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	if req.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume ID must be provided")
 	}
@@ -359,6 +372,9 @@ func (cs *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 func (cs *controllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ControllerExpandVolume volume ID missing in request")
@@ -498,10 +514,16 @@ func (cs *controllerServer) ControllerGetVolume(ctx context.Context, req *csi.Co
 /* Unimplemented methods beyond */
 
 func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
 func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+
 	return nil, status.Error(codes.Unimplemented, "")
 }
 

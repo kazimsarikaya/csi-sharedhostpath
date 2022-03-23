@@ -3,7 +3,6 @@ bin/**
 *.test
 # remove non-code folders
 deploy/**
-docker/**
 examples/**
 patroni/**
 tests/**
